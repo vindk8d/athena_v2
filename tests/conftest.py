@@ -10,6 +10,7 @@ from datetime import datetime, timedelta
 from typing import Dict, Any, List
 import sys
 from pathlib import Path
+import types
 
 # Add the project root directory to the Python path
 project_root = str(Path(__file__).parent.parent)
@@ -25,6 +26,8 @@ os.environ["TELEGRAM_BOT_TOKEN"] = "test:telegram_token"
 os.environ["OPENAI_API_KEY"] = "sk-test-openai-key"
 os.environ["GOOGLE_CLIENT_ID"] = "test_google_client_id"
 os.environ["GOOGLE_CLIENT_SECRET"] = "test_google_client_secret"
+
+from src.agent.athena_agent import AthenaAgent
 
 
 @pytest.fixture(scope="session")
@@ -245,6 +248,81 @@ async def async_client():
     
     async with AsyncClient(app=app, base_url="http://test") as client:
         yield client
+
+
+@pytest.fixture
+def mock_openai_response():
+    """Mock OpenAI response for meeting details extraction."""
+    return {
+        "content": '{"topic": "catch-up", "duration": 30, "time": "2:30 PM"}'
+    }
+
+
+@pytest.fixture
+def mock_chat_openai():
+    class MockLLM:
+        async def ainvoke(self, messages):
+            # Extract the user message
+            user_message = None
+            for m in messages:
+                if hasattr(m, 'content') and isinstance(m.content, str):
+                    if 'schedule a catch-up meeting' in m.content:
+                        return type('Response', (), {"content": '{"topic": "catch-up", "duration": 30, "time": "2:30 PM"}'})()
+                    if 'project planning' in m.content and '9 AM' in m.content:
+                        return type('Response', (), {"content": '{"topic": "project planning", "duration": 60, "time": "9:00 AM"}'})()
+                    if 'Q2 roadmap' in m.content:
+                        return type('Response', (), {"content": '{"topic": "Q2 roadmap", "duration": null, "time": null}'})()
+                    if 'Hello there!' in m.content:
+                        return type('Response', (), {"content": '{"topic": null, "duration": null, "time": null}'})()
+                    if '45-minute sync about the project at 3 PM' in m.content:
+                        return type('Response', (), {"content": '{"topic": "sync about the project", "duration": 45, "time": "3:00 PM"}'})()
+                    if 'The meeting is about project planning' in m.content:
+                        return type('Response', (), {"content": '{"topic": "project planning", "duration": null, "time": null}'})()
+                    if '25 minutes about the project' in m.content:
+                        return type('Response', (), {"content": '{"topic": "project", "duration": 25, "time": null}'})()
+                    if 'I want to schedule a meeting' in m.content or 'Let\'s schedule a meeting' in m.content:
+                        return type('Response', (), {"content": '{"topic": null, "duration": null, "time": null}'})()
+                    if "Let's meet tomorrow for 1 hour about project planning" in m.content:
+                        return type('Response', (), {"content": '{"topic": "project planning", "duration": 60, "time": "tomorrow"}'})()
+            # Default fallback
+            return type('Response', (), {"content": '{"topic": null, "duration": null, "time": null}'})()
+    return MockLLM()
+
+
+@pytest.fixture
+def mock_chat_openai_error():
+    class MockLLM:
+        async def ainvoke(self, messages):
+            raise Exception("API Error")
+    return MockLLM()
+
+
+@pytest.fixture
+def mock_conversation_manager():
+    manager = Mock()
+    manager.get_conversation_context = AsyncMock(return_value=[])
+    return manager
+
+
+@pytest.fixture
+def athena_agent(mock_supabase_client, mock_conversation_manager, mock_chat_openai):
+    """Create AthenaAgent instance with mocked dependencies."""
+    agent = AthenaAgent()
+    agent.db_client = mock_supabase_client
+    agent.conversation_manager = mock_conversation_manager
+    agent.conversation_manager.get_conversation_context = AsyncMock(return_value=[])
+    agent.llm = mock_chat_openai
+    return agent
+
+
+@pytest.fixture
+def athena_agent_llm_error(mock_supabase_client, mock_conversation_manager, mock_chat_openai_error):
+    agent = AthenaAgent()
+    agent.db_client = mock_supabase_client
+    agent.conversation_manager = mock_conversation_manager
+    agent.conversation_manager.get_conversation_context = AsyncMock(return_value=[])
+    agent.llm = mock_chat_openai_error
+    return agent
 
 
 # Pytest markers for easy test categorization

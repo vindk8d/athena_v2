@@ -6,9 +6,8 @@ Handles natural language understanding, context management, and OpenAI integrati
 
 from typing import Any, Dict, List, Optional
 import re
-
-# from langchain.chat_models import ChatOpenAI  # Uncomment when LangChain is configured
-# from langchain.schema import HumanMessage, SystemMessage
+from langchain_openai import ChatOpenAI
+from langchain.schema import HumanMessage, SystemMessage
 from src.database.supabase_client import SupabaseClient
 from src.utils.conversation_manager import ConversationManager
 
@@ -18,10 +17,40 @@ class AthenaAgent:
     Handles message processing, context, and prompt management.
     """
     def __init__(self):
-        # self.llm = ChatOpenAI(model_name="gpt-4", temperature=0.7)  # Example
+        self.llm = ChatOpenAI(model_name="gpt-4", temperature=0)
         self.db_client = SupabaseClient()
         self.conversation_manager = ConversationManager()
         self.user_states = {}  # {telegram_id: state}
+
+    async def extract_meeting_details(self, message: str) -> Dict[str, Any]:
+        """
+        Use LangChain/OpenAI to extract meeting details from user message.
+        """
+        system_prompt = """You are a meeting details extraction assistant. Extract meeting details from the user's message.
+        Return a JSON object with the following fields:
+        - topic: The meeting topic/purpose (string)
+        - duration: Meeting duration in minutes (integer, must be divisible by 15)
+        - time: Preferred meeting time (string in 12-hour format with AM/PM)
+        
+        If a field is not mentioned, set it to null.
+        For duration, if user says "default", use 60 minutes.
+        For time, extract the time mentioned in 12-hour format (e.g., "9:00 AM").
+        """
+        
+        messages = [
+            SystemMessage(content=system_prompt),
+            HumanMessage(content=message)
+        ]
+        
+        try:
+            response = await self.llm.ainvoke(messages)
+            # Parse the response as JSON
+            import json
+            details = json.loads(response.content)
+            return details
+        except Exception as e:
+            print(f"[DEBUG] extract_meeting_details: error={e}")
+            return {"topic": None, "duration": None, "time": None}
 
     async def check_contact_exists(self, telegram_id: str) -> bool:
         """
@@ -191,9 +220,13 @@ class AthenaAgent:
                 return self.build_contact_collection_prompt(missing)
             return "Thank you for providing your contact information!"
         if state == "scheduling_meeting":
-            topic = getattr(parsed_message, "topic", None) if parsed_message else None
-            duration = getattr(parsed_message, "duration", None) if parsed_message else None
-            time = getattr(parsed_message, "time", None) if parsed_message else None
+            # Extract meeting details using LangChain/OpenAI
+            meeting_details = await self.extract_meeting_details(message)
+            
+            topic = meeting_details.get("topic")
+            duration = meeting_details.get("duration")
+            time = meeting_details.get("time")
+            
             missing = []
             if not topic:
                 missing.append("topic")
@@ -201,8 +234,11 @@ class AthenaAgent:
                 missing.append("duration")
             if not time:
                 missing.append("time")
+            
             if missing:
                 return self.build_meeting_info_prompt(missing)
+            
+            # If we have all required information, show time options
             options = ["Tomorrow at 10:00 AM", "Tomorrow at 2:00 PM", "The day after at 11:00 AM"]
             return self.build_meeting_scheduling_prompt(options)
         if state == "confirmation":

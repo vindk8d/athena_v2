@@ -16,14 +16,6 @@ def mock_supabase_client():
 def mock_conversation_manager():
     return Mock()
 
-@pytest.fixture
-def athena_agent(mock_supabase_client, mock_conversation_manager):
-    agent = AthenaAgent()
-    agent.db_client = mock_supabase_client
-    agent.conversation_manager = mock_conversation_manager
-    agent.conversation_manager.get_conversation_context = AsyncMock(return_value=[])
-    return agent
-
 @pytest.mark.asyncio
 async def test_new_contact_state(athena_agent):
     # Simulate new contact
@@ -213,4 +205,81 @@ async def test_invalid_state_handling(athena_agent):
         "Hello",
         "123456789"
     )
-    assert athena_agent.get_state("123456789") in ["new_contact", "returning_contact"] 
+    assert athena_agent.get_state("123456789") in ["new_contact", "returning_contact"]
+
+@pytest.mark.asyncio
+async def test_extract_meeting_details(athena_agent):
+    """Test the LangChain-powered meeting details extraction."""
+    # Test 1: Complete meeting details
+    message = "Let's schedule a catch-up meeting for 30 minutes at 2:30 PM"
+    details = await athena_agent.extract_meeting_details(message)
+    assert details["topic"] == "catch-up"
+    assert details["duration"] == 30
+    assert details["time"] == "2:30 PM"
+
+    # Test 2: Default duration
+    message = "I need a meeting about project planning at 9 AM"
+    details = await athena_agent.extract_meeting_details(message)
+    assert details["topic"] == "project planning"
+    assert details["duration"] == 60  # default duration
+    assert details["time"] == "9:00 AM"
+
+    # Test 3: Only topic
+    message = "Let's discuss the Q2 roadmap"
+    details = await athena_agent.extract_meeting_details(message)
+    assert details["topic"] == "Q2 roadmap"
+    assert details["duration"] is None
+    assert details["time"] is None
+
+    # Test 4: Invalid message
+    message = "Hello there!"
+    details = await athena_agent.extract_meeting_details(message)
+    assert details["topic"] is None
+    assert details["duration"] is None
+    assert details["time"] is None
+
+@pytest.mark.asyncio
+async def test_meeting_details_in_scheduling_state(athena_agent):
+    """Test meeting details extraction in scheduling_meeting state."""
+    # Setup: Set state to scheduling_meeting
+    athena_agent.set_state("123456789", "scheduling_meeting")
+    
+    # Test 1: Complete meeting details
+    response = await athena_agent.process_message(
+        "Let's have a 45-minute sync about the project at 3 PM",
+        "123456789"
+    )
+    assert "Here are some available meeting times" in response
+    
+    # Test 2: Partial details
+    response = await athena_agent.process_message(
+        "The meeting is about project planning",
+        "123456789"
+    )
+    assert "I still need" in response
+    assert "duration" in response.lower()
+    assert "time" in response.lower()
+    
+    # Test 3: Invalid duration
+    response = await athena_agent.process_message(
+        "Let's meet for 25 minutes about the project",
+        "123456789"
+    )
+    assert "I still need" in response
+    assert "duration" in response.lower()
+
+@pytest.mark.asyncio
+async def test_meeting_details_error_handling(athena_agent):
+    """Test error handling in meeting details extraction."""
+    # Setup: Set state to scheduling_meeting
+    athena_agent.set_state("123456789", "scheduling_meeting")
+    
+    # Test error handling
+    response = await athena_agent.process_message(
+        "Let's schedule a meeting",
+        "123456789"
+    )
+    assert "I still need" in response
+    assert "topic" in response.lower()
+    assert "duration" in response.lower()
+    assert "time" in response.lower() 
