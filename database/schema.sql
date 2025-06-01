@@ -31,7 +31,7 @@ CREATE TABLE IF NOT EXISTS messages (
     channel TEXT NOT NULL DEFAULT 'telegram',
     content TEXT NOT NULL,
     metadata JSONB,
-    status TEXT,
+    status TEXT NOT NULL DEFAULT 'delivered' CHECK (status IN ('delivered', 'failed', 'pending')),
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 

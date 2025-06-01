@@ -150,11 +150,10 @@ class SupabaseClient:
             "channel": channel,
             "content": content,
             "created_at": _now_utc(),
+            "status": status or "delivered"  # Always include status with default
         }
         if metadata:
             message["metadata"] = metadata
-        if status:
-            message["status"] = status
         try:
             response = self.supabase.table("messages").insert(message).execute()
             data = response.data

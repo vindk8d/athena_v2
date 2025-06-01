@@ -524,7 +524,8 @@ class AthenaTelegramBot:
                 sender=sender,
                 channel="telegram",
                 content=content,
-                metadata=metadata
+                metadata=metadata,
+                status="delivered"
             )
             
         except Exception as e:
