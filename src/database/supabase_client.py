@@ -144,13 +144,19 @@ class SupabaseClient:
             Message row as dict
         """
         # Validate and normalize sender
-        if sender.lower() not in ['user', 'assistant']:
-            raise ValueError(f"Invalid sender value: {sender}. Must be 'user' or 'assistant'")
+        valid_senders = ['user', 'assistant']
+        normalized_sender = sender.lower().strip()
+        
+        if normalized_sender not in valid_senders:
+            logger.error(f"Invalid sender value: '{sender}'. Must be one of {valid_senders}")
+            raise ValueError(f"Invalid sender value: '{sender}'. Must be one of {valid_senders}")
+        
+        logger.info(f"Creating message with sender: '{normalized_sender}'")
         
         message = {
             "id": str(uuid.uuid4()),
             "contact_id": contact_id,
-            "sender": sender.lower(),  # Normalize to lowercase
+            "sender": normalized_sender,  # Use normalized value
             "channel": channel,
             "content": content,
             "created_at": _now_utc(),
@@ -158,14 +164,17 @@ class SupabaseClient:
         }
         if metadata:
             message["metadata"] = metadata
+            
         try:
+            logger.info(f"Attempting to insert message with data: {message}")
             response = self.supabase.table("messages").insert(message).execute()
             data = response.data
             if data and len(data) > 0:
+                logger.info(f"Successfully created message with sender: {normalized_sender}")
                 return data[0]
             else:
-                logger.error("Failed to insert new message")
-                raise Exception("Message creation failed")
+                logger.error("Failed to insert new message - no data returned")
+                raise Exception("Message creation failed - no data returned")
         except Exception as e:
             logger.error(f"Error creating message: {e}")
             raise 
