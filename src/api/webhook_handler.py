@@ -91,15 +91,15 @@ class WebhookHandler:
             Response dictionary
         """
         try:
+            # Ensure bot is initialized
+            await self.ensure_initialized()
+            
             # Create Telegram Update object
             update = Update.de_json(update_data, self.telegram_bot.bot)
             
             if not update:
                 logger.error("Failed to parse Telegram update")
                 raise HTTPException(status_code=400, detail="Invalid update format")
-            
-            # Ensure bot is initialized
-            await self.ensure_initialized()
             
             # Process the update through the bot's application
             await self.telegram_bot.application.process_update(update)

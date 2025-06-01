@@ -114,6 +114,9 @@ class AthenaTelegramBot:
             # Set bot commands
             await self.set_bot_commands()
             
+            # Initialize the application
+            await self.application.initialize()
+            
             logger.info("Athena Telegram bot initialized successfully")
             
         except Exception as e:
