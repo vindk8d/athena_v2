@@ -51,6 +51,11 @@ class AthenaAgent:
             return details
         except Exception as e:
             print(f"[DEBUG] extract_meeting_details: error={e}")
+            # On error, try to extract time using regex as fallback
+            time_pattern = r'(?:at|by|around|about)?\s*(\d{1,2}(?::\d{2})?\s*(?:AM|PM|am|pm))'
+            time_match = re.search(time_pattern, message, re.IGNORECASE)
+            if time_match:
+                return {"topic": None, "duration": None, "time": time_match.group(1)}
             return {"topic": None, "duration": None, "time": None}
 
     def update_meeting_details(self, telegram_id: str, new_details: Dict[str, Any]) -> None:
@@ -60,6 +65,7 @@ class AthenaAgent:
         if telegram_id not in self.meeting_details:
             self.meeting_details[telegram_id] = {"topic": None, "duration": None, "time": None}
         
+        # Only update fields that are not None in new_details
         for key, value in new_details.items():
             if value is not None:
                 self.meeting_details[telegram_id][key] = value
@@ -257,22 +263,6 @@ class AthenaAgent:
             f"{options_text}\n"
             "Please let me know which one works best for you, or suggest another time."
         )
-
-    def get_state(self, telegram_id: str) -> str:
-        return self.user_states.get(telegram_id, "idle")
-
-    def set_state(self, telegram_id: str, state: str):
-        self.user_states[telegram_id] = state
-
-    def validate_name(self, name: str) -> bool:
-        return bool(name and 1 < len(name.strip()) <= 100)
-
-    def validate_email(self, email: str) -> bool:
-        pattern = r"^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$"
-        return bool(email and re.match(pattern, email))
-
-    def validate_meeting_duration(self, duration: int) -> bool:
-        return duration >= 15 and duration % 15 == 0
 
     def get_state(self, telegram_id: str) -> str:
         return self.user_states.get(telegram_id, "idle")
