@@ -143,14 +143,18 @@ class SupabaseClient:
         Returns:
             Message row as dict
         """
+        # Validate and normalize sender
+        if sender.lower() not in ['user', 'assistant']:
+            raise ValueError(f"Invalid sender value: {sender}. Must be 'user' or 'assistant'")
+        
         message = {
             "id": str(uuid.uuid4()),
             "contact_id": contact_id,
-            "sender": sender,
+            "sender": sender.lower(),  # Normalize to lowercase
             "channel": channel,
             "content": content,
             "created_at": _now_utc(),
-            "status": status or "delivered"  # Always include status with default
+            "status": status or "delivered"
         }
         if metadata:
             message["metadata"] = metadata
