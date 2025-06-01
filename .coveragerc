@@ -1,0 +1,88 @@
+# Coverage configuration for Athena Digital Executive Assistant
+
+[run]
+# Source directories to include in coverage
+source = src
+
+# Files to omit from coverage
+omit = 
+    src/config/__init__.py
+    tests/*
+    */__pycache__/*
+    */migrations/*
+    */venv/*
+    */env/*
+    setup.py
+    conftest.py
+
+# Enable branch coverage
+branch = True
+
+# Parallel coverage for multiprocessing
+parallel = True
+
+# Data file location
+data_file = .coverage
+
+[report]
+# Minimum coverage percentage to pass
+fail_under = 80
+
+# Show missing lines in terminal report
+show_missing = True
+
+# Skip covered files in terminal report
+skip_covered = False
+
+# Skip empty files
+skip_empty = True
+
+# Sort by coverage percentage
+sort = Cover
+
+# Precision for coverage percentage
+precision = 2
+
+# Exclude lines from coverage
+exclude_lines =
+    # Have to re-enable the standard pragma
+    pragma: no cover
+
+    # Don't complain about missing debug-only code:
+    def __repr__
+    if self\.debug
+
+    # Don't complain if tests don't hit defensive assertion code:
+    raise AssertionError
+    raise NotImplementedError
+
+    # Don't complain if non-runnable code isn't run:
+    if 0:
+    if __name__ == .__main__.:
+
+    # Don't complain about abstract methods
+    @(abc\.)?abstractmethod
+
+    # Don't complain about type checking imports
+    if TYPE_CHECKING:
+
+[html]
+# HTML report directory
+directory = htmlcov
+
+# Title for HTML report
+title = Athena Digital Executive Assistant Coverage Report
+
+# Show contexts in HTML report
+show_contexts = True
+
+[xml]
+# XML report file
+output = coverage.xml
+
+[json]
+# JSON report file  
+output = coverage.json
+
+# Show contexts in JSON report
+show_contexts = True 
