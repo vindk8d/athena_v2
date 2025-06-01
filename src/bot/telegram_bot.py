@@ -489,16 +489,17 @@ class AthenaTelegramBot:
         content: str,
         message_id: Optional[int] = None,
         user_info: Optional[Any] = None
-    ) -> None:
+    ) -> Any:
         """
         Store a message in the database with enhanced user information.
-        
         Args:
             telegram_id: Telegram user ID
             sender: Message sender ('user' or 'assistant')
             content: Message content
             message_id: Telegram message ID
             user_info: Parsed user information (ParsedUser object)
+        Returns:
+            The created message object (dict) from the database
         """
         try:
             # Get or create contact with enhanced user information
@@ -515,11 +516,9 @@ class AthenaTelegramBot:
                 )
             else:
                 contact = await self.db_client.get_or_create_contact_by_telegram_id(telegram_id)
-            
             # Store message with metadata
             metadata = {"telegram_message_id": message_id} if message_id else None
-            
-            await self.db_client.create_message(
+            message = await self.db_client.create_message(
                 contact_id=contact['id'],
                 sender=sender,
                 channel="telegram",
@@ -527,9 +526,10 @@ class AthenaTelegramBot:
                 metadata=metadata,
                 status="delivered"
             )
-            
+            return message
         except Exception as e:
             logger.error(f"Failed to store message: {e}")
+            raise
     
     async def set_webhook(self, webhook_url: str) -> bool:
         """
