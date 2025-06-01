@@ -6,10 +6,9 @@ Handles natural language understanding, context management, and OpenAI integrati
 
 from typing import Any, Dict, List, Optional
 import re
-from langchain_openai import ChatOpenAI
-from langchain.schema import HumanMessage, SystemMessage
 from src.database.supabase_client import SupabaseClient
 from src.utils.conversation_manager import ConversationManager
+from src.utils.llm_rate_limiter import LLMRateLimiter, RateLimitConfig
 
 class AthenaAgent:
     """
@@ -17,46 +16,33 @@ class AthenaAgent:
     Handles message processing, context, and prompt management.
     """
     def __init__(self):
-        self.llm = ChatOpenAI(model_name="gpt-3.5-turbo", temperature=0)  # Changed to gpt-3.5-turbo
+        self.llm_rate_limiter = LLMRateLimiter(
+            config=RateLimitConfig(
+                requests_per_minute=3,  # OpenAI's default rate limit
+                max_retries=3,
+                initial_backoff=1.0,
+                max_backoff=32.0,
+                backoff_factor=2.0
+            )
+        )
         self.db_client = SupabaseClient()
         self.conversation_manager = ConversationManager()
         self.user_states = {}  # {telegram_id: state}
         self.meeting_details = {}  # {telegram_id: {topic: str, duration: int, time: str}}
+        self._initialized = False
+
+    async def initialize(self):
+        """Initialize the agent and its components"""
+        if not self._initialized:
+            await self.llm_rate_limiter.initialize()
+            self._initialized = True
 
     async def extract_meeting_details(self, message: str) -> Dict[str, Any]:
         """
-        Use LangChain/OpenAI to extract meeting details from user message.
+        Use LLMRateLimiter to extract meeting details from user message.
         """
-        system_prompt = """You are a meeting details extraction assistant. Extract meeting details from the user's message.
-        Return a JSON object with the following fields:
-        - topic: The meeting topic/purpose (string)
-        - duration: Meeting duration in minutes (integer, must be divisible by 15)
-        - time: Preferred meeting time (string in 12-hour format with AM/PM)
-        
-        If a field is not mentioned, set it to null.
-        For duration, if user says "default", use 60 minutes.
-        For time, extract the time mentioned in 12-hour format (e.g., "9:00 AM").
-        """
-        
-        messages = [
-            SystemMessage(content=system_prompt),
-            HumanMessage(content=message)
-        ]
-        
-        try:
-            response = await self.llm.ainvoke(messages)
-            # Parse the response as JSON
-            import json
-            details = json.loads(response.content)
-            return details
-        except Exception as e:
-            print(f"[DEBUG] extract_meeting_details: error={e}")
-            # On error, try to extract time using regex as fallback
-            time_pattern = r'(?:at|by|around|about)?\s*(\d{1,2}(?::\d{2})?\s*(?:AM|PM|am|pm))'
-            time_match = re.search(time_pattern, message, re.IGNORECASE)
-            if time_match:
-                return {"topic": None, "duration": None, "time": time_match.group(1)}
-            return {"topic": None, "duration": None, "time": None}
+        await self.initialize()
+        return await self.llm_rate_limiter.extract_meeting_details(message)
 
     def update_meeting_details(self, telegram_id: str, new_details: Dict[str, Any]) -> None:
         """
@@ -128,6 +114,8 @@ class AthenaAgent:
         """
         Process a user message and return the AI's response.
         """
+        await self.initialize()
+
         # Use telegram_id from parsed_message if available
         if parsed_message and hasattr(parsed_message, "user") and hasattr(parsed_message.user, "telegram_id"):
             telegram_id = parsed_message.user.telegram_id
@@ -141,43 +129,30 @@ class AthenaAgent:
         state = self.get_state(telegram_id)
         print(f"[DEBUG] process_message: initial state={state}")
 
-        # Handle cancel intent
+        # Handle cancel intent - no LLM needed
         if intent_keywords and intent_keywords.get("cancel"):
             self.set_state(telegram_id, "idle")
             self.meeting_details.pop(telegram_id, None)  # Clear meeting details
-            state = "idle"
+            return "I've cancelled the current operation. How can I help you?"
 
-        # Always check for scheduling intent first
-        elif intent_keywords and intent_keywords.get("wants_meeting"):
+        # Handle obvious intents without LLM
+        if intent_keywords and intent_keywords.get("wants_meeting"):
             self.set_state(telegram_id, "scheduling_meeting")
-            state = "scheduling_meeting"
-        # Always check for collecting_info intent
+            return self.build_meeting_info_prompt(telegram_id)
         elif intent_keywords and intent_keywords.get("providing_contact"):
             self.set_state(telegram_id, "collecting_info")
-            state = "collecting_info"
-        elif state in (None, "idle"):
+            return self.build_contact_collection_prompt(["name", "email"])
+
+        # Handle state transitions
+        if state in (None, "idle"):
             if not is_returning:
                 self.set_state(telegram_id, "new_contact")
-                state = "new_contact"
+                return self.build_intro_prompt(user_name, returning=False)
             else:
                 self.set_state(telegram_id, "returning_contact")
-                state = "returning_contact"
+                return self.build_intro_prompt(user_name, returning=True)
 
-        # Reset to idle if state is not recognized
-        elif state not in [
-            "idle", "new_contact", "returning_contact", "collecting_info", "scheduling_meeting", "confirmation"
-        ]:
-            self.set_state(telegram_id, "idle")
-            state = "idle"
-
-        # Always get the latest state
-        state = self.get_state(telegram_id)
-        print(f"[DEBUG] process_message: final state={state}")
-
-        if state == "new_contact":
-            return self.build_intro_prompt(user_name, returning=False)
-        if state == "returning_contact":
-            return self.build_intro_prompt(user_name, returning=True)
+        # Handle specific states
         if state == "collecting_info":
             name = getattr(parsed_message.user, "full_name", None) if parsed_message and hasattr(parsed_message, "user") else None
             email = getattr(parsed_message.user, "email", None) if parsed_message and hasattr(parsed_message, "user") else None
@@ -192,8 +167,9 @@ class AthenaAgent:
             if missing:
                 return self.build_contact_collection_prompt(missing)
             return "Thank you for providing your contact information!"
+
         if state == "scheduling_meeting":
-            # Extract meeting details using LangChain/OpenAI
+            # Extract meeting details using rate-limited LLM
             meeting_details = await self.extract_meeting_details(message)
             
             # Update stored meeting details
@@ -207,8 +183,11 @@ class AthenaAgent:
             # If we have all required information, show time options
             options = ["Tomorrow at 10:00 AM", "Tomorrow at 2:00 PM", "The day after at 11:00 AM"]
             return self.build_meeting_scheduling_prompt(options)
+
         if state == "confirmation":
             return "Your meeting has been scheduled! Here are the details:\n" + self.build_meeting_scheduling_prompt(["Your meeting details here"])
+
+        # Default response for unrecognized state
         return "I'm here to help you schedule meetings or update your contact info. How can I assist you today?"
 
     async def check_contact_exists(self, telegram_id: str) -> bool:

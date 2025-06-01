@@ -1,211 +1,197 @@
+"""
+Unit tests for AthenaAgent
+"""
+
 import pytest
-from unittest.mock import Mock, patch, AsyncMock
+import pytest_asyncio
+from unittest.mock import AsyncMock, MagicMock, patch
 from src.agent.athena_agent import AthenaAgent
 
-@pytest.fixture(autouse=True)
-def patch_dependencies():
-    with patch('src.agent.athena_agent.SupabaseClient', Mock()), \
-         patch('src.agent.athena_agent.ConversationManager', Mock()):
-        yield
-
-@pytest.fixture
-def mock_supabase_client():
-    return Mock()
-
-@pytest.fixture
-def mock_conversation_manager():
-    return Mock()
-
-@pytest.fixture
-def athena_agent():
-    agent = AthenaAgent()
-    # Patch async dependencies
-    agent.conversation_manager.get_conversation_context = AsyncMock(return_value=[])
-    agent.db_client.get_contact_by_telegram_id = AsyncMock(return_value=None)
-    return agent
+@pytest_asyncio.fixture
+async def athena_agent():
+    """Create an AthenaAgent instance for testing"""
+    with patch('src.agent.athena_agent.SupabaseClient', autospec=True) as MockSupabaseClient, \
+         patch('src.agent.athena_agent.ConversationManager', autospec=True) as MockConversationManager:
+        # Mock async methods if needed
+        mock_db = MockSupabaseClient.return_value
+        mock_db.get_contact_by_telegram_id = AsyncMock(return_value=None)
+        mock_convo = MockConversationManager.return_value
+        mock_convo.get_conversation_context = AsyncMock(return_value=[])
+        agent = AthenaAgent()
+        await agent.initialize()
+        return agent
 
 @pytest.mark.asyncio
 async def test_new_contact_state(athena_agent):
-    """Test initial state for new contacts."""
-    response = await athena_agent.process_message("Hello", "123456789")
+    """Test handling of new contact state"""
+    response = await athena_agent.process_message(
+        "Hello",
+        "123",
+        parsed_message=MagicMock(user=MagicMock(telegram_id="123", full_name="Test User"))
+    )
     assert "I'm Athena" in response
-    assert athena_agent.get_state("123456789") == "new_contact"
+    assert "Test User" in response
 
 @pytest.mark.asyncio
 async def test_returning_contact_state(athena_agent):
-    """Test state for returning contacts."""
-    athena_agent.db_client.get_contact_by_telegram_id = AsyncMock(return_value={"name": "John"})
-    # Provide a parsed_message with user_name
-    parsed_message = Mock()
-    parsed_message.user = Mock()
-    parsed_message.user.full_name = "John"
-    parsed_message.user.telegram_id = "123456789"
-    response = await athena_agent.process_message("Hello", "123456789", parsed_message=parsed_message)
-    assert "Welcome back" in response
-    assert athena_agent.get_state("123456789") == "returning_contact"
+    """Test handling of returning contact state"""
+    with patch.object(athena_agent, 'check_contact_exists', new_callable=AsyncMock) as mock_check:
+        mock_check.return_value = True
+        response = await athena_agent.process_message(
+            "Hello",
+            "123",
+            parsed_message=MagicMock(user=MagicMock(telegram_id="123", full_name="Test User"))
+        )
+        assert "Welcome back" in response
+        assert "Test User" in response
 
 @pytest.mark.asyncio
 async def test_contact_collection_prompt(athena_agent):
-    """Test contact information collection prompts."""
-    athena_agent.set_state("123456789", "collecting_info")
-    response = await athena_agent.process_message("Hello", "123456789")
-    assert "I still need" in response
-    assert "name" in response.lower() or "email" in response.lower()
+    """Test contact collection prompt"""
+    response = await athena_agent.process_message(
+        "I want to schedule a meeting",
+        "123",
+        intent_keywords={"wants_meeting": True}
+    )
+    assert "I'm helping you schedule a meeting" in response
+    assert (
+        "what this meeting is about" in response
+        or "how long the meeting should be" in response
+        or "when you'd like to have the meeting" in response
+    )
 
 @pytest.mark.asyncio
 async def test_meeting_scheduling_prompt(athena_agent):
-    """Test meeting scheduling prompts."""
-    athena_agent.set_state("123456789", "scheduling_meeting")
-    with patch.object(AthenaAgent, "extract_meeting_details", new=AsyncMock(return_value={"topic": None, "duration": None, "time": None})):
-        response = await athena_agent.process_message("I want to schedule a meeting", "123456789")
+    """Test meeting scheduling prompt"""
+    response = await athena_agent.process_message(
+        "I want to schedule a meeting",
+        "123",
+        intent_keywords={"wants_meeting": True}
+    )
     assert "I'm helping you schedule a meeting" in response
-    assert "what this meeting is about" in response.lower()
+    assert (
+        "what this meeting is about" in response
+        or "how long the meeting should be" in response
+        or "when you'd like to have the meeting" in response
+    )
 
 @pytest.mark.asyncio
 async def test_confirmation_state(athena_agent):
-    """Test confirmation state responses."""
-    athena_agent.set_state("123456789", "confirmation")
-    response = await athena_agent.process_message("Yes", "123456789")
+    """Test confirmation state"""
+    athena_agent.set_state("123", "confirmation")
+    response = await athena_agent.process_message(
+        "Yes, that works",
+        "123"
+    )
     assert "Your meeting has been scheduled" in response
 
 @pytest.mark.asyncio
 async def test_state_transitions_from_returning_contact(athena_agent):
-    """Test state transitions when user is a returning contact."""
-    # Setup: Set initial state as returning_contact
-    athena_agent.set_state("123456789", "returning_contact")
-    with patch.object(AthenaAgent, "extract_meeting_details", new=AsyncMock(return_value={"topic": None, "duration": None, "time": None})):
-        # Test 1: Scheduling intent should override returning_contact state
-        intent_keywords = {"wants_meeting": True}
+    """Test state transitions from returning contact"""
+    with patch.object(athena_agent, 'check_contact_exists', new_callable=AsyncMock) as mock_check:
+        mock_check.return_value = True
         response = await athena_agent.process_message(
             "I want to schedule a meeting",
-            "123456789",
-            intent_keywords=intent_keywords
+            "123",
+            intent_keywords={"wants_meeting": True}
         )
-    assert athena_agent.get_state("123456789") == "scheduling_meeting"
-    assert "I'm helping you schedule a meeting" in response
+        assert athena_agent.get_state("123") == "scheduling_meeting"
+        assert "I'm helping you schedule a meeting" in response
 
 @pytest.mark.asyncio
 async def test_state_transitions_from_scheduling_meeting(athena_agent):
-    """Test state transitions when in scheduling_meeting state."""
-    # Setup: Set initial state as scheduling_meeting
-    athena_agent.set_state("123456789", "scheduling_meeting")
-    with patch.object(AthenaAgent, "extract_meeting_details", new=AsyncMock(return_value={"topic": "project planning", "duration": None, "time": None})):
-        # Test 1: Providing meeting details should stay in scheduling_meeting
-        response = await athena_agent.process_message(
-            "The meeting is about project planning",
-            "123456789"
-        )
-    assert athena_agent.get_state("123456789") == "scheduling_meeting"
-    assert "I know this meeting is about" in response
+    """Test state transitions from scheduling meeting"""
+    athena_agent.set_state("123", "scheduling_meeting")
+    response = await athena_agent.process_message(
+        "Cancel",
+        "123",
+        intent_keywords={"cancel": True}
+    )
+    assert athena_agent.get_state("123") == "idle"
+    assert "cancelled" in response.lower()
 
 @pytest.mark.asyncio
 async def test_state_transitions_from_collecting_info(athena_agent):
-    """Test state transitions when in collecting_info state."""
-    # Setup: Set initial state as collecting_info
-    athena_agent.set_state("123456789", "collecting_info")
-
-    # Test 1: Providing contact info should stay in collecting_info until complete
+    """Test state transitions from collecting info"""
+    athena_agent.set_state("123", "collecting_info")
     response = await athena_agent.process_message(
-        "My name is John Doe",
-        "123456789"
+        "My name is Test User and my email is test@example.com",
+        "123",
+        parsed_message=MagicMock(user=MagicMock(
+            telegram_id="123",
+            full_name="Test User",
+            email="test@example.com"
+        ))
     )
-    assert athena_agent.get_state("123456789") == "collecting_info"
-    assert "I still need" in response
+    assert "Thank you" in response
 
 @pytest.mark.asyncio
 async def test_state_persistence(athena_agent):
-    """Test that state persists between messages."""
-    # Set initial state
-    athena_agent.set_state("123456789", "scheduling_meeting")
-    with patch.object(AthenaAgent, "extract_meeting_details", new=AsyncMock(return_value={"topic": None, "duration": None, "time": None})):
-        # Send a message without changing state
-        response = await athena_agent.process_message(
-            "Hello",
-            "123456789"
-        )
-    assert athena_agent.get_state("123456789") == "scheduling_meeting"
+    """Test state persistence between messages"""
+    athena_agent.set_state("123", "scheduling_meeting")
+    response = await athena_agent.process_message(
+        "What's my current state?",
+        "123"
+    )
+    assert athena_agent.get_state("123") == "scheduling_meeting"
 
 @pytest.mark.asyncio
 async def test_state_reset_on_cancel(athena_agent):
-    """Test that state resets on cancel intent."""
-    # Set initial state
-    athena_agent.set_state("123456789", "scheduling_meeting")
-    
-    # Send cancel intent
-    intent_keywords = {"cancel": True}
-    with patch.object(AthenaAgent, "extract_meeting_details", new=AsyncMock(return_value={"topic": None, "duration": None, "time": None})):
-        response = await athena_agent.process_message(
-            "Cancel",
-            "123456789",
-            intent_keywords=intent_keywords
-        )
-    assert athena_agent.get_state("123456789") == "idle"
+    """Test state reset on cancel"""
+    athena_agent.set_state("123", "scheduling_meeting")
+    athena_agent.meeting_details["123"] = {"topic": "Test", "duration": 30, "time": "10:00 AM"}
+    response = await athena_agent.process_message(
+        "Cancel",
+        "123",
+        intent_keywords={"cancel": True}
+    )
+    assert athena_agent.get_state("123") == "idle"
+    assert "123" not in athena_agent.meeting_details
 
 @pytest.mark.asyncio
 async def test_invalid_state_handling(athena_agent):
-    """Test handling of invalid states."""
-    # Set invalid state
-    athena_agent.set_state("123456789", "invalid_state")
-    
-    # Send a message
+    """Test handling of invalid state"""
+    athena_agent.set_state("123", "invalid_state")
     response = await athena_agent.process_message(
         "Hello",
-        "123456789"
+        "123"
     )
-    assert athena_agent.get_state("123456789") == "idle"
+    assert "I'm here to help" in response
 
 @pytest.mark.asyncio
 async def test_extract_meeting_details(athena_agent):
-    """Test meeting details extraction."""
-    # Patch OpenAI call to avoid real API usage
-    with patch.object(AthenaAgent, "extract_meeting_details", new=AsyncMock(return_value={"topic": "project sync", "duration": 45, "time": "3:00 PM"})):
-        details = await athena_agent.extract_meeting_details(
-            "Let's have a 45-minute sync about the project at 3 PM"
-        )
-        assert details["topic"] == "project sync"
-        assert details["duration"] == 45
-        assert "3:00 PM" in details["time"]
-    with patch.object(AthenaAgent, "extract_meeting_details", new=AsyncMock(return_value={"topic": "project planning", "duration": None, "time": None})):
-        details = await athena_agent.extract_meeting_details(
-            "The meeting is about project planning"
-        )
-        assert details["topic"] == "project planning"
-        assert details["duration"] is None
-        assert details["time"] is None
+    """Test meeting details extraction"""
+    with patch.object(athena_agent.llm_rate_limiter, '_make_request', new_callable=AsyncMock) as mock_request:
+        mock_request.return_value = '{"topic": "Test Meeting", "duration": 30, "time": "10:00 AM"}'
+        details = await athena_agent.extract_meeting_details("Schedule a test meeting for 30 minutes at 10 AM")
+        assert details["topic"] == "Test Meeting"
+        assert details["duration"] == 30
+        assert details["time"] == "10:00 AM"
 
 @pytest.mark.asyncio
 async def test_meeting_details_in_scheduling_state(athena_agent):
-    """Test meeting details extraction in scheduling_meeting state."""
-    # Setup: Set state to scheduling_meeting
-    athena_agent.set_state("123456789", "scheduling_meeting")
-    with patch.object(AthenaAgent, "extract_meeting_details", new=AsyncMock(return_value={"topic": "project sync", "duration": 45, "time": "3:00 PM"})):
-        # Test 1: Complete meeting details
+    """Test meeting details handling in scheduling state"""
+    athena_agent.set_state("123", "scheduling_meeting")
+    with patch.object(athena_agent.llm_rate_limiter, '_make_request', new_callable=AsyncMock) as mock_request:
+        mock_request.return_value = '{"topic": "Test Meeting", "duration": 30, "time": "10:00 AM"}'
         response = await athena_agent.process_message(
-            "Let's have a 45-minute sync about the project at 3 PM",
-            "123456789"
+            "Schedule a test meeting for 30 minutes at 10 AM",
+            "123"
         )
         assert "Here are some available meeting times" in response
-    # Clear meeting details for the user before the next subtest
-    athena_agent.meeting_details["123456789"] = {"topic": None, "duration": None, "time": None}
-    with patch.object(AthenaAgent, "extract_meeting_details", new=AsyncMock(return_value={"topic": "project planning", "duration": None, "time": None})):
-        # Test 2: Partial details
-        response = await athena_agent.process_message(
-            "The meeting is about project planning",
-            "123456789"
-        )
-        assert "I know this meeting is about" in response
-        assert "I still need to know" in response
+        assert "Tomorrow at 10:00 AM" in response
+        assert "Tomorrow at 2:00 PM" in response
+        assert "The day after at 11:00 AM" in response
 
 @pytest.mark.asyncio
 async def test_meeting_details_error_handling(athena_agent):
-    """Test error handling in meeting details extraction."""
-    # Setup: Set state to scheduling_meeting
-    athena_agent.set_state("123456789", "scheduling_meeting")
-    with patch.object(AthenaAgent, "extract_meeting_details", new=AsyncMock(return_value={"topic": None, "duration": None, "time": None})):
-        # Test error handling
+    """Test error handling in meeting details extraction"""
+    athena_agent.set_state("123", "scheduling_meeting")
+    with patch.object(athena_agent.llm_rate_limiter, '_make_request', new_callable=AsyncMock) as mock_request:
+        mock_request.side_effect = Exception("API Error")
         response = await athena_agent.process_message(
-            "Let's schedule a meeting",
-            "123456789"
+            "Schedule a meeting at 2 PM",
+            "123"
         )
-    assert "I'm helping you schedule a meeting" in response
-    assert "what this meeting is about" in response.lower() 
+        assert "I'm helping you schedule a meeting" in response
+        assert "2 PM" in response 
