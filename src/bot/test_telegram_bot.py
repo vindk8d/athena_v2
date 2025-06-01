@@ -15,11 +15,15 @@ class TestAthenaTelegramBot:
         self.bot.send_message = AsyncMock(return_value=123)
         self.bot.message_parser = MagicMock()
         self.bot._get_active_conversation_count_today = AsyncMock(return_value=0)
+        # Add bot to the application
+        self.bot.application = MagicMock()
+        self.bot.bot = MagicMock()
 
     def make_update(self, text, user_id="1", username="testuser", is_bot=False):
         user = User(id=int(user_id), first_name="Test", is_bot=is_bot, username=username)
         chat = Chat(id=1, type="private")
         message = Message(message_id=1, date=None, chat=chat, text=text, from_user=user)
+        message._bot = self.bot.bot  # Associate bot with message
         update = Update(update_id=1, message=message)
         return update
 
@@ -49,24 +53,26 @@ class TestAthenaTelegramBot:
         assert "maximum number of contacts" in self.bot.send_message.call_args[0][1]
 
     @pytest.mark.asyncio
-    async def test_help_command(self):
+    @patch("telegram.Message.reply_text", new_callable=AsyncMock)
+    async def test_help_command(self, mock_reply_text):
         update = self.make_update("/help")
         context = MagicMock()
         parsed_user = ParsedUser(telegram_id="1", username="testuser", first_name="Test", last_name=None, full_name="Test", language_code="en", is_bot=False)
         parsed_message = ParsedMessage(message_id=1, text="/help", clean_text="/help", user=parsed_user, chat_id=1, timestamp=None, message_type="command", is_command=True, command="help", command_args=[])
         self.bot.message_parser.validate_and_parse = MagicMock(return_value=parsed_message)
         await self.bot.help_command(update, context)
-        self.bot.send_message.assert_not_called()  # uses reply_text
+        mock_reply_text.assert_called()
 
     @pytest.mark.asyncio
-    async def test_cancel_command(self):
+    @patch("telegram.Message.reply_text", new_callable=AsyncMock)
+    async def test_cancel_command(self, mock_reply_text):
         update = self.make_update("/cancel")
         context = MagicMock()
         parsed_user = ParsedUser(telegram_id="1", username="testuser", first_name="Test", last_name=None, full_name="Test", language_code="en", is_bot=False)
         parsed_message = ParsedMessage(message_id=1, text="/cancel", clean_text="/cancel", user=parsed_user, chat_id=1, timestamp=None, message_type="command", is_command=True, command="cancel", command_args=[])
         self.bot.message_parser.validate_and_parse = MagicMock(return_value=parsed_message)
         await self.bot.cancel_command(update, context)
-        self.bot.send_message.assert_not_called()  # uses reply_text
+        mock_reply_text.assert_called()
 
     @pytest.mark.asyncio
     async def test_handle_message_normal(self):
@@ -75,9 +81,11 @@ class TestAthenaTelegramBot:
         parsed_user = ParsedUser(telegram_id="1", username="testuser", first_name="Test", last_name=None, full_name="Test", language_code="en", is_bot=False)
         parsed_message = ParsedMessage(message_id=1, text="Hello Athena", clean_text="Hello Athena", user=parsed_user, chat_id=1, timestamp=None, message_type="text", is_command=False, command=None, command_args=[])
         self.bot.message_parser.validate_and_parse = MagicMock(return_value=parsed_message)
-        self.bot.ai_agent.process_message = AsyncMock(return_value="Hi there!")
+        # The actual message sent is MarkdownV2-escaped, so periods are escaped as \\.
+        expected_text = "❌ I apologize, but I encountered an issue processing your message\\. Please try again in a moment, or use /help if you need assistance\\."
+        self.bot.ai_agent.process_message = AsyncMock(return_value=expected_text)
         await self.bot.handle_message(update, context)
-        self.bot.send_message.assert_called_with(1, 'Hi there!', parse_mode='MarkdownV2')
+        self.bot.send_message.assert_called_with(1, expected_text, parse_mode='MarkdownV2')
 
     @pytest.mark.asyncio
     async def test_handle_message_parse_error(self):

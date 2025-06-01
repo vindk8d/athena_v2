@@ -6,7 +6,7 @@ Handles async CRUD operations for contacts, messages, and user_details tables.
 
 import logging
 from typing import Optional, Dict, Any
-from datetime import datetime
+from datetime import datetime, UTC
 import uuid
 
 from supabase import create_client, Client
@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 def _now_utc() -> str:
     """Return current UTC time as ISO string."""
-    return datetime.utcnow().isoformat() + "Z"
+    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
 class SupabaseClient:

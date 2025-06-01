@@ -28,9 +28,12 @@ class AthenaAgent:
         Check if a contact exists in Supabase by Telegram ID.
         """
         try:
+            print(f"[DEBUG] check_contact_exists: calling get_contact_by_telegram_id with telegram_id={telegram_id}")
             contact = await self.db_client.get_contact_by_telegram_id(telegram_id)
+            print(f"[DEBUG] check_contact_exists: result={contact}")
             return contact is not None
-        except Exception:
+        except Exception as e:
+            print(f"[DEBUG] check_contact_exists: exception={e}")
             return False
 
     def build_intro_prompt(self, user_name: Optional[str] = None, returning: bool = False) -> str:
@@ -120,30 +123,41 @@ class AthenaAgent:
         Returns:
             AI-generated response as a string
         """
-        # Retrieve context if not provided
+        # Use telegram_id from parsed_message if available
+        if parsed_message and hasattr(parsed_message, "user") and hasattr(parsed_message.user, "telegram_id"):
+            telegram_id = parsed_message.user.telegram_id
         if conversation_context is None:
             conversation_context = await self.conversation_manager.get_conversation_context(telegram_id, limit=5)
-        # Contact recognition
         is_returning = await self.check_contact_exists(telegram_id)
         user_name = getattr(parsed_message.user, "full_name", None) if parsed_message and hasattr(parsed_message, "user") else None
-        # State management
+        print(f"[DEBUG] process_message: telegram_id={telegram_id}, is_returning={is_returning}, user_name={user_name}")
+        # State management: only set if not already set to a meaningful value
         state = self.get_state(telegram_id)
-        if not is_returning:
-            self.set_state(telegram_id, "new_contact")
-        elif intent_keywords and intent_keywords.get("wants_meeting"):
-            self.set_state(telegram_id, "scheduling_meeting")
-        elif intent_keywords and intent_keywords.get("providing_contact"):
-            self.set_state(telegram_id, "collecting_info")
-        else:
-            self.set_state(telegram_id, "returning_contact")
-        # Use state to guide response
+        print(f"[DEBUG] process_message: initial state={state}")
+        if state in (None, "idle"):
+            if intent_keywords:
+                if intent_keywords.get("wants_meeting"):
+                    self.set_state(telegram_id, "scheduling_meeting")
+                elif intent_keywords.get("providing_contact"):
+                    self.set_state(telegram_id, "collecting_info")
+                else:
+                    if not is_returning:
+                        self.set_state(telegram_id, "new_contact")
+                    else:
+                        self.set_state(telegram_id, "returning_contact")
+            else:
+                if not is_returning:
+                    self.set_state(telegram_id, "new_contact")
+                else:
+                    self.set_state(telegram_id, "returning_contact")
+        # Always get the latest state
         state = self.get_state(telegram_id)
+        print(f"[DEBUG] process_message: final state={state}")
         if state == "new_contact":
             return self.build_intro_prompt(user_name, returning=False)
         if state == "returning_contact":
             return self.build_intro_prompt(user_name, returning=True)
         if state == "collecting_info":
-            errors = []
             name = getattr(parsed_message.user, "full_name", None) if parsed_message and hasattr(parsed_message, "user") else None
             email = getattr(parsed_message.user, "email", None) if parsed_message and hasattr(parsed_message, "user") else None
             telegram_id_val = getattr(parsed_message.user, "telegram_id", None) if parsed_message and hasattr(parsed_message, "user") else None
@@ -158,7 +172,6 @@ class AthenaAgent:
                 return self.build_contact_collection_prompt(missing)
             return "Thank you for providing your contact information!"
         if state == "scheduling_meeting":
-            # Gather required meeting info
             topic = getattr(parsed_message, "topic", None) if parsed_message else None
             duration = getattr(parsed_message, "duration", None) if parsed_message else None
             time = getattr(parsed_message, "time", None) if parsed_message else None
@@ -171,10 +184,8 @@ class AthenaAgent:
                 missing.append("time")
             if missing:
                 return self.build_meeting_info_prompt(missing)
-            # If all info present, proceed to suggest times (placeholder logic)
             options = ["Tomorrow at 10:00 AM", "Tomorrow at 2:00 PM", "The day after at 11:00 AM"]
             return self.build_meeting_scheduling_prompt(options)
         if state == "confirmation":
             return "Your meeting has been scheduled! Here are the details:\n" + self.build_meeting_scheduling_prompt(["Your meeting details here"])
-        # Default fallback
         return "I'm here to help you schedule meetings or update your contact info. How can I assist you today?" 

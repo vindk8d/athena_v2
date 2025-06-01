@@ -359,6 +359,129 @@ async def delete_telegram_webhook(
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
+@router.get("/telegram/status")
+async def get_telegram_webhook_status(
+    handler: WebhookHandler = Depends(get_webhook_handler)
+):
+    """
+    Get the current Telegram webhook status.
+    
+    This endpoint checks the current webhook configuration
+    and provides debug information.
+    
+    Returns:
+        Current webhook status and configuration
+    """
+    try:
+        # Ensure bot is initialized
+        await handler.ensure_initialized()
+        
+        # Get bot info
+        bot_info = await handler.telegram_bot.get_bot_info()
+        
+        # Get webhook info using the bot
+        try:
+            webhook_info = await handler.telegram_bot.bot.get_webhook_info()
+            webhook_data = {
+                "url": webhook_info.url,
+                "has_custom_certificate": webhook_info.has_custom_certificate,
+                "pending_update_count": webhook_info.pending_update_count,
+                "last_error_date": webhook_info.last_error_date.isoformat() if webhook_info.last_error_date else None,
+                "last_error_message": webhook_info.last_error_message,
+                "max_connections": webhook_info.max_connections,
+                "allowed_updates": webhook_info.allowed_updates
+            }
+        except Exception as e:
+            webhook_data = {"error": f"Could not get webhook info: {str(e)}"}
+        
+        return JSONResponse(
+            status_code=200,
+            content={
+                "status": "success",
+                "bot_info": bot_info,
+                "webhook_info": webhook_data,
+                "environment": handler.settings.environment,
+                "webhook_url_configured": bool(handler.settings.webhook_url)
+            }
+        )
+        
+    except Exception as e:
+        logger.error(f"Error getting webhook status: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={
+                "status": "error",
+                "error": str(e)
+            }
+        )
+
+
+@router.post("/telegram/setup")
+async def setup_telegram_webhook_manual(
+    handler: WebhookHandler = Depends(get_webhook_handler)
+):
+    """
+    Manually setup Telegram webhook.
+    
+    This endpoint forces webhook setup using the configured WEBHOOK_URL.
+    Use this if automatic webhook setup during startup failed.
+    
+    Returns:
+        Success or failure response
+    """
+    try:
+        # Ensure bot is initialized
+        await handler.ensure_initialized()
+        
+        # Get webhook URL from settings
+        if not handler.settings.webhook_url:
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "status": "error",
+                    "message": "WEBHOOK_URL environment variable not set"
+                }
+            )
+        
+        # Set the webhook
+        success = await handler.telegram_bot.set_webhook(handler.settings.webhook_url)
+        
+        if success:
+            # Get updated webhook info
+            webhook_info = await handler.telegram_bot.bot.get_webhook_info()
+            
+            return JSONResponse(
+                status_code=200,
+                content={
+                    "status": "success",
+                    "message": f"Webhook set successfully to {handler.settings.webhook_url}",
+                    "webhook_info": {
+                        "url": webhook_info.url,
+                        "pending_update_count": webhook_info.pending_update_count,
+                        "last_error_message": webhook_info.last_error_message
+                    }
+                }
+            )
+        else:
+            return JSONResponse(
+                status_code=500,
+                content={
+                    "status": "error",
+                    "message": "Failed to set webhook"
+                }
+            )
+            
+    except Exception as e:
+        logger.error(f"Error setting webhook manually: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={
+                "status": "error",
+                "message": f"Internal server error: {str(e)}"
+            }
+        )
+
+
 # Additional utility functions for webhook management
 
 async def setup_telegram_webhook(base_url: str) -> bool:

@@ -9,7 +9,7 @@ import re
 from typing import Optional, Dict, Any
 
 # Telegram MarkdownV2 special characters that must be escaped
-TELEGRAM_MARKDOWN_V2_SPECIALS = r'[_*\[\]()~`>#+\-=|{}.!]'
+TELEGRAM_MARKDOWN_V2_SPECIALS = r'_\*\[\]\(\)~`>#+\-=|{}.!'
 
 
 def escape_markdown(text: str) -> str:

@@ -98,7 +98,10 @@ async def root():
         "endpoints": {
             "webhooks": "/webhook",
             "health": "/health",
-            "docs": "/docs"
+            "docs": "/docs",
+            "debug_env": "/debug/env",
+            "webhook_status": "/webhook/telegram/status",
+            "webhook_setup": "/webhook/telegram/setup"
         }
     }
 
@@ -174,6 +177,26 @@ async def internal_error_handler(request, exc):
             "message": "An unexpected error occurred"
         }
     )
+
+
+@app.get("/debug/env")
+async def debug_environment():
+    """
+    Debug endpoint to check environment configuration.
+    
+    Returns:
+        Environment configuration status (without sensitive values)
+    """
+    settings = get_settings()
+    
+    return {
+        "environment": settings.environment,
+        "webhook_url_set": bool(settings.webhook_url),
+        "webhook_url_value": settings.webhook_url[:50] + "..." if settings.webhook_url else None,
+        "webhook_secret_set": bool(settings.webhook_secret),
+        "telegram_token_set": bool(settings.telegram_bot_token),
+        "port": settings.port
+    }
 
 
 if __name__ == "__main__":

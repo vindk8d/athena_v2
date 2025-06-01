@@ -11,7 +11,7 @@ This module handles all Telegram bot functionality including:
 import asyncio
 import logging
 from typing import Optional, Dict, Any
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 import pytz
 
 from telegram import Update, Bot, BotCommand
@@ -142,7 +142,7 @@ class AthenaTelegramBot:
         Count unique contacts who have sent messages today (UTC).
         """
         # Query messages table for unique contact_ids with messages today
-        utc_now = datetime.utcnow().replace(tzinfo=pytz.UTC)
+        utc_now = datetime.now(UTC)
         start_of_day = utc_now.replace(hour=0, minute=0, second=0, microsecond=0)
         try:
             # Use Supabase RPC or filter if available, else fallback to all messages
@@ -216,7 +216,7 @@ class AthenaTelegramBot:
             "user_id": user.telegram_id,
             "username": user.username,
             "full_name": user.full_name,
-            "started_at": datetime.utcnow(),
+            "started_at": datetime.now(UTC),
             "context": "introduction" if not existing_contact else "general"
         }
         

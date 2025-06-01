@@ -57,19 +57,19 @@
   - [x] 2.5 Add error handling for failed message delivery and webhook timeouts
   - [x] 2.6 Create message formatting utilities for sending responses back to Telegram
   - [x] 2.7 Implement rate limiting to handle up to 10 concurrent conversations
-  - [ ] 2.8 Write comprehensive unit tests for telegram_bot.py covering all message scenarios
+  - [x] 2.8 Write comprehensive unit tests for telegram_bot.py covering all message scenarios
 
 - [ ] 3.0 Develop AI Agent with LangChain and OpenAI
   - [x] 3.1 Create src/agent/athena_agent.py with LangChain ChatOpenAI integration
-  - [ ] 3.2 Design conversation prompts for introduction, contact collection, and meeting scheduling
-  - [ ] 3.3 Implement contact recognition by checking Telegram ID against Supabase contacts table
-  - [ ] 3.4 Create src/utils/conversation_manager.py for retrieving last 5 messages for context
-  - [ ] 3.5 Add conversation state management (new contact, returning contact, scheduling mode)
-  - [ ] 3.6 Implement input validation for name, email format, and meeting requirements
-  - [ ] 3.7 Add conversation focus logic to redirect off-topic requests back to core tasks
-  - [ ] 3.8 Create prompt templates for persistent information gathering until completion
-  - [ ] 3.9 Implement conversation flow: introduction → contact info → meeting scheduling → confirmation
-  - [ ] 3.10 Write unit tests for AI agent responses and conversation state transitions
+  - [x] 3.2 Design conversation prompts for introduction, contact collection, and meeting scheduling
+  - [x] 3.3 Implement contact recognition by checking Telegram ID against Supabase contacts table
+  - [x] 3.4 Create src/utils/conversation_manager.py for retrieving last 5 messages for context
+  - [x] 3.5 Add conversation state management (new contact, returning contact, scheduling mode)
+  - [x] 3.6 Implement input validation for name, email format, and meeting requirements
+  - [x] 3.7 Add conversation focus logic to redirect off-topic requests back to core tasks
+  - [x] 3.8 Create prompt templates for persistent information gathering until completion
+  - [x] 3.9 Implement conversation flow: introduction → contact info → meeting scheduling → confirmation
+  - [x] 3.10 Write unit tests for AI agent responses and conversation state transitions
 
 - [ ] 4.0 Build Calendar Integration and Meeting Scheduling
   - [ ] 4.1 Create src/calendar/google_calendar.py with Google Calendar API v3 integration
