@@ -32,6 +32,24 @@ class SupabaseClient:
             settings.supabase_service_role_key or settings.supabase_anon_key
         )
 
+    async def get_contact_by_telegram_id(self, telegram_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Get a contact by Telegram ID.
+        Args:
+            telegram_id: Telegram user ID as string
+        Returns:
+            Contact row as dict or None if not found
+        """
+        try:
+            response = self.supabase.table("contacts").select("*").eq("telegram_id", telegram_id).execute()
+            data = response.data
+            if data and len(data) > 0:
+                return data[0]
+            return None
+        except Exception as e:
+            logger.error(f"Error fetching contact by telegram_id {telegram_id}: {e}")
+            return None
+
     async def get_or_create_contact_by_telegram_id(self, telegram_id: str, user_data: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """
         Get or create a contact by Telegram ID.
@@ -46,38 +64,71 @@ class SupabaseClient:
             response = self.supabase.table("contacts").select("*").eq("telegram_id", telegram_id).execute()
             data = response.data
             if data and len(data) > 0:
+                logger.info(f"Found existing contact for telegram_id {telegram_id}")
                 return data[0]
         except Exception as e:
             logger.error(f"Error fetching contact: {e}")
             # Continue to creation
-        # Prepare new contact data
+        
+        # Prepare new contact data with only basic required fields
         contact = {
             "id": str(uuid.uuid4()),
             "telegram_id": telegram_id,
             "created_at": _now_utc(),
             "updated_at": _now_utc(),
         }
+        
+        # Add user data if available, but be defensive about which fields to include
         if user_data:
-            for key in ["name", "email", "username", "first_name", "last_name", "language_code"]:
+            # Map of safe fields to include
+            safe_fields = ["name", "email", "username", "first_name", "last_name", "language_code"]
+            for key in safe_fields:
                 if key in user_data and user_data[key]:
                     contact[key] = user_data[key]
-            # Prefer full_name or name
+            
+            # Prefer full_name over name if available
             if "full_name" in user_data and user_data["full_name"]:
                 contact["name"] = user_data["full_name"]
+        
+        # Ensure we have a name
         if "name" not in contact or not contact["name"]:
             contact["name"] = f"Telegram User {telegram_id}"
-        # Insert new contact
+        
+        # Insert new contact with better error handling
         try:
+            logger.info(f"Creating new contact for telegram_id {telegram_id}")
             response = self.supabase.table("contacts").insert(contact).execute()
             data = response.data
             if data and len(data) > 0:
+                logger.info(f"Successfully created contact for telegram_id {telegram_id}")
                 return data[0]
             else:
-                logger.error("Failed to insert new contact")
-                raise Exception("Contact creation failed")
+                logger.error("Failed to insert new contact - no data returned")
+                raise Exception("Contact creation failed - no data returned")
         except Exception as e:
-            logger.error(f"Error creating contact: {e}")
-            raise
+            logger.error(f"Error creating contact for telegram_id {telegram_id}: {e}")
+            
+            # If creation fails, try with minimal data
+            minimal_contact = {
+                "id": str(uuid.uuid4()),
+                "telegram_id": telegram_id,
+                "name": f"Telegram User {telegram_id}",
+                "created_at": _now_utc()
+            }
+            
+            try:
+                logger.info(f"Retrying with minimal contact data for telegram_id {telegram_id}")
+                response = self.supabase.table("contacts").insert(minimal_contact).execute()
+                data = response.data
+                if data and len(data) > 0:
+                    logger.info(f"Successfully created minimal contact for telegram_id {telegram_id}")
+                    return data[0]
+                else:
+                    logger.error("Failed to create even minimal contact")
+                    raise Exception("Contact creation failed completely")
+            except Exception as retry_error:
+                logger.error(f"Failed to create minimal contact: {retry_error}")
+                raise Exception(f"Contact creation failed: {str(e)} | Retry failed: {str(retry_error)}")
 
     async def create_message(self, contact_id: str, sender: str, channel: str, content: str, metadata: Optional[Dict[str, Any]] = None, status: Optional[str] = None) -> Dict[str, Any]:
         """
