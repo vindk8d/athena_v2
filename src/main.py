@@ -36,6 +36,10 @@ async def lifespan(app: FastAPI):
     
     settings = get_settings()
     
+    # Initialize webhook handler
+    from src.api.webhook_handler import webhook_handler
+    await webhook_handler.ensure_initialized()
+    
     # Setup webhook if in production mode and webhook URL is configured
     if settings.environment == "production" and settings.webhook_url:
         webhook_success = await setup_telegram_webhook(settings.webhook_url)

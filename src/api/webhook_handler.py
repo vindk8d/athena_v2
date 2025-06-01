@@ -39,8 +39,14 @@ class WebhookHandler:
         """Initialize the webhook handler."""
         self.settings = get_settings()
         self.telegram_bot = get_bot()
-        # Initialize the bot application
-        asyncio.create_task(self.telegram_bot.initialize())
+        # Initialize bot application synchronously
+        self._init_task = None
+    
+    async def ensure_initialized(self):
+        """Ensure the bot is initialized."""
+        if self._init_task is None:
+            self._init_task = asyncio.create_task(self.telegram_bot.initialize())
+        await self._init_task
     
     async def verify_telegram_webhook(
         self, 
@@ -93,8 +99,7 @@ class WebhookHandler:
                 raise HTTPException(status_code=400, detail="Invalid update format")
             
             # Ensure bot is initialized
-            if not self.telegram_bot.application:
-                await self.telegram_bot.initialize()
+            await self.ensure_initialized()
             
             # Process the update through the bot's application
             await self.telegram_bot.application.process_update(update)
@@ -282,8 +287,7 @@ async def set_telegram_webhook(
     """
     try:
         # Ensure bot is initialized
-        if not handler.telegram_bot.application:
-            await handler.telegram_bot.initialize()
+        await handler.ensure_initialized()
         
         # Set the webhook
         success = await handler.telegram_bot.set_webhook(webhook_url)
@@ -328,8 +332,7 @@ async def delete_telegram_webhook(
     """
     try:
         # Ensure bot is initialized
-        if not handler.telegram_bot.application:
-            await handler.telegram_bot.initialize()
+        await handler.ensure_initialized()
         
         # Delete the webhook
         success = await handler.telegram_bot.delete_webhook()
