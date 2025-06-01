@@ -134,22 +134,41 @@ class AthenaAgent:
         # State management: only set if not already set to a meaningful value
         state = self.get_state(telegram_id)
         print(f"[DEBUG] process_message: initial state={state}")
-        if state in (None, "idle"):
+
+        # Handle cancel intent
+        if intent_keywords and intent_keywords.get("cancel"):
+            self.set_state(telegram_id, "idle")
+            state = "idle"
+
+        # Always check for scheduling intent first
+        elif intent_keywords and intent_keywords.get("wants_meeting"):
+            self.set_state(telegram_id, "scheduling_meeting")
+            state = "scheduling_meeting"
+        # Always check for collecting_info intent
+        elif intent_keywords and intent_keywords.get("providing_contact"):
+            self.set_state(telegram_id, "collecting_info")
+            state = "collecting_info"
+        elif state in (None, "idle"):
             if intent_keywords:
-                if intent_keywords.get("wants_meeting"):
-                    self.set_state(telegram_id, "scheduling_meeting")
-                elif intent_keywords.get("providing_contact"):
-                    self.set_state(telegram_id, "collecting_info")
+                if not is_returning:
+                    self.set_state(telegram_id, "new_contact")
+                    state = "new_contact"
                 else:
-                    if not is_returning:
-                        self.set_state(telegram_id, "new_contact")
-                    else:
-                        self.set_state(telegram_id, "returning_contact")
+                    self.set_state(telegram_id, "returning_contact")
+                    state = "returning_contact"
             else:
                 if not is_returning:
                     self.set_state(telegram_id, "new_contact")
+                    state = "new_contact"
                 else:
                     self.set_state(telegram_id, "returning_contact")
+                    state = "returning_contact"
+        # Reset to idle if state is not recognized
+        elif state not in [
+            "idle", "new_contact", "returning_contact", "collecting_info", "scheduling_meeting", "confirmation"
+        ]:
+            self.set_state(telegram_id, "idle")
+            state = "idle"
         # Always get the latest state
         state = self.get_state(telegram_id)
         print(f"[DEBUG] process_message: final state={state}")

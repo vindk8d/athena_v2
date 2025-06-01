@@ -8,6 +8,12 @@ import pytest
 from unittest.mock import Mock, AsyncMock, MagicMock
 from datetime import datetime, timedelta
 from typing import Dict, Any, List
+import sys
+from pathlib import Path
+
+# Add the project root directory to the Python path
+project_root = str(Path(__file__).parent.parent)
+sys.path.insert(0, project_root)
 
 # Set test environment variables before importing app modules
 os.environ["ENVIRONMENT"] = "testing"
