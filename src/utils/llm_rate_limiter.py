@@ -12,7 +12,7 @@ from langchain.schema import HumanMessage, SystemMessage
 @dataclass
 class RateLimitConfig:
     """Configuration for rate limiting"""
-    requests_per_minute: int = 3
+    min_interval: float = 20.0  # Minimum seconds between requests
     max_retries: int = 3
     initial_backoff: float = 1.0
     max_backoff: float = 32.0
@@ -27,7 +27,7 @@ class LLMRateLimiter:
         self.config = config or RateLimitConfig()
         self.light_model = ChatOpenAI(model_name="gpt-3.5-turbo", temperature=0)
         self.heavy_model = ChatOpenAI(model_name="gpt-4", temperature=0)
-        self.request_timestamps: List[float] = []
+        self.last_request_time: float = 0
         self.lock = asyncio.Lock()
         self.queue = asyncio.Queue()
         self._queue_processor_task = None
@@ -53,6 +53,14 @@ class LLMRateLimiter:
                 print(f"Error processing queue: {e}")
             await asyncio.sleep(0.1)
 
+    async def _wait_for_rate_limit(self):
+        """Wait until enough time has passed since the last request"""
+        current_time = time.time()
+        time_since_last = current_time - self.last_request_time
+        if time_since_last < self.config.min_interval:
+            wait_time = self.config.min_interval - time_since_last
+            await asyncio.sleep(wait_time)
+
     async def _make_request(
         self,
         messages: List[Any],
@@ -77,29 +85,25 @@ class LLMRateLimiter:
             return await future
 
         async with self.lock:
-            # Clean up old timestamps
-            current_time = time.time()
-            self.request_timestamps = [ts for ts in self.request_timestamps 
-                                     if current_time - ts < 60]
-
-            # Check if we're at the rate limit
-            if len(self.request_timestamps) >= self.config.requests_per_minute:
-                wait_time = 60 - (current_time - self.request_timestamps[0])
-                if wait_time > 0:
-                    await asyncio.sleep(wait_time)
-
+            await self._wait_for_rate_limit()
+            
             # Try the request with exponential backoff
             backoff = self.config.initial_backoff
             for attempt in range(self.config.max_retries):
                 try:
                     model = self.heavy_model if use_heavy_model else self.light_model
                     response = await model.ainvoke(messages)
-                    self.request_timestamps.append(time.time())
+                    self.last_request_time = time.time()
                     return response.content
                 except Exception as e:
-                    if "rate limit" in str(e).lower() and attempt < self.config.max_retries - 1:
-                        await asyncio.sleep(min(backoff, self.config.max_backoff))
-                        backoff *= self.config.backoff_factor
+                    if "rate limit" in str(e).lower() or "insufficient_quota" in str(e).lower():
+                        if attempt < self.config.max_retries - 1:
+                            wait_time = min(backoff, self.config.max_backoff)
+                            print(f"[DEBUG] Rate limit hit, waiting {wait_time:.1f} seconds before retry")
+                            await asyncio.sleep(wait_time)
+                            backoff *= self.config.backoff_factor
+                        else:
+                            raise
                     else:
                         raise
 
@@ -157,4 +161,16 @@ class LLMRateLimiter:
             The generated response
         """
         await self.initialize()  # Ensure queue processor is running
-        return await self._make_request(messages, use_heavy_model, priority) 
+        return await self._make_request(messages, use_heavy_model, priority)
+
+    async def shutdown(self):
+        """Shutdown the queue processor task if running."""
+        if self._queue_processor_task is not None:
+            self._queue_processor_task.cancel()
+            try:
+                await self._queue_processor_task
+            except asyncio.CancelledError:
+                pass
+            except Exception:
+                pass
+            self._queue_processor_task = None 

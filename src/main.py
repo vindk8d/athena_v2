@@ -77,7 +77,7 @@ app.add_middleware(
 
 
 # Include routers
-app.include_router(webhook_router)
+app.include_router(webhook_router, prefix="/webhook")
 
 
 @app.get("/")

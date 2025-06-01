@@ -18,7 +18,7 @@ class AthenaAgent:
     def __init__(self):
         self.llm_rate_limiter = LLMRateLimiter(
             config=RateLimitConfig(
-                requests_per_minute=3,  # OpenAI's default rate limit
+                min_interval=20.0,  # Minimum 20 seconds between requests
                 max_retries=3,
                 initial_backoff=1.0,
                 max_backoff=32.0,

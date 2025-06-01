@@ -28,8 +28,8 @@ from starlette.requests import Request as StarletteRequest
 # Configure logging
 logger = logging.getLogger(__name__)
 
-# Create router for webhook endpoints
-router = APIRouter(prefix="/webhook", tags=["webhooks"])
+# Create router for webhook endpoints - remove prefix to avoid duplication
+router = APIRouter(tags=["webhooks"])
 
 
 class WebhookHandler:

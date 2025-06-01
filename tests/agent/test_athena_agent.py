@@ -19,7 +19,8 @@ async def athena_agent():
         mock_convo.get_conversation_context = AsyncMock(return_value=[])
         agent = AthenaAgent()
         await agent.initialize()
-        return agent
+        yield agent
+        await agent.llm_rate_limiter.shutdown()
 
 @pytest.mark.asyncio
 async def test_new_contact_state(athena_agent):
