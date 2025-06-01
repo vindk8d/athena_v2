@@ -39,6 +39,8 @@ class WebhookHandler:
         """Initialize the webhook handler."""
         self.settings = get_settings()
         self.telegram_bot = get_bot()
+        # Initialize the bot application
+        asyncio.create_task(self.telegram_bot.initialize())
     
     async def verify_telegram_webhook(
         self, 
@@ -90,7 +92,7 @@ class WebhookHandler:
                 logger.error("Failed to parse Telegram update")
                 raise HTTPException(status_code=400, detail="Invalid update format")
             
-            # Initialize bot if not already done
+            # Ensure bot is initialized
             if not self.telegram_bot.application:
                 await self.telegram_bot.initialize()
             

@@ -76,6 +76,10 @@ class AthenaTelegramBot:
     async def initialize(self) -> None:
         """Initialize the bot application and handlers."""
         try:
+            if self.application is not None:
+                logger.info("Bot application already initialized")
+                return
+
             # Create bot application
             self.application = Application.builder().token(
                 self.settings.telegram_bot_token
