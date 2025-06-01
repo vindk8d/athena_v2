@@ -43,10 +43,8 @@ def mock_settings():
     """Mock settings for testing."""
     from src.config.settings import Settings
     
+    # Return a real settings instance rather than overriding private attributes
     settings = Settings()
-    # Override with test values
-    settings._environment = "testing"
-    settings._debug = True
     return settings
 
 

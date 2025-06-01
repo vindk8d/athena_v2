@@ -100,7 +100,7 @@ class Settings:
     @property
     def google_redirect_uri(self) -> str:
         """Google OAuth redirect URI."""
-        return os.getenv("GOOGLE_REDIRECT_URI", "http://localhost:8000/auth/callback/google")
+        return os.getenv("GOOGLE_REDIRECT_URI", f"http://localhost:{self.frontend_port}/auth/callback/google")
     
     # Application Configuration
     @property

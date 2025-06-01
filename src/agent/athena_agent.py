@@ -6,6 +6,8 @@ Handles natural language understanding, context management, and OpenAI integrati
 
 from typing import Any, Dict, List, Optional
 import re
+import json
+from langchain.schema import SystemMessage, HumanMessage
 from src.database.supabase_client import SupabaseClient
 from src.utils.conversation_manager import ConversationManager
 from src.utils.llm_rate_limiter import LLMRateLimiter, RateLimitConfig
@@ -22,7 +24,10 @@ class AthenaAgent:
                 max_retries=3,
                 initial_backoff=1.0,
                 max_backoff=32.0,
-                backoff_factor=2.0
+                backoff_factor=2.0,
+                cache_ttl=3600,  # Cache responses for 1 hour
+                max_batch_size=5,  # Process up to 5 requests in a batch
+                batch_timeout=2.0  # Wait up to 2 seconds for batch
             )
         )
         self.db_client = SupabaseClient()
@@ -37,12 +42,224 @@ class AthenaAgent:
             await self.llm_rate_limiter.initialize()
             self._initialized = True
 
+    def _should_use_heavy_model(self, message: str, state: str) -> bool:
+        """
+        Determine if we should use GPT-4 based on message complexity and state.
+        
+        Args:
+            message: The user's message
+            state: Current conversation state
+            
+        Returns:
+            bool: True if GPT-4 should be used
+        """
+        # Use GPT-4 for complex states
+        if state in ["scheduling_meeting", "collecting_info"]:
+            return True
+            
+        # Use GPT-4 for complex queries
+        complex_patterns = [
+            r"schedule.*meeting",
+            r"plan.*meeting",
+            r"set up.*call",
+            r"organize.*session",
+            r"arrange.*discussion",
+            r"book.*appointment",
+            r"reschedule",
+            r"cancel.*meeting",
+            r"change.*time",
+            r"modify.*schedule"
+        ]
+        
+        if any(re.search(pattern, message.lower()) for pattern in complex_patterns):
+            return True
+            
+        # Use GPT-4 for error recovery
+        if state == "error_recovery":
+            return True
+            
+        # Default to GPT-3.5 for simple interactions
+        return False
+
+    def _is_priority_request(self, state: str) -> bool:
+        """
+        Determine if a request should be treated as high priority.
+        
+        Args:
+            state: Current conversation state
+            
+        Returns:
+            bool: True if request is high priority
+        """
+        # High priority states
+        priority_states = [
+            "error_recovery",
+            "scheduling_meeting",
+            "collecting_info"
+        ]
+        
+        return state in priority_states
+
     async def extract_meeting_details(self, message: str) -> Dict[str, Any]:
         """
         Use LLMRateLimiter to extract meeting details from user message.
         """
         await self.initialize()
-        return await self.llm_rate_limiter.extract_meeting_details(message)
+        
+        # Use GPT-4 for meeting details extraction as it's more accurate
+        messages = [
+            SystemMessage(content="Extract meeting details from the user's message. Return a JSON object with topic, duration (in minutes), and time fields."),
+            HumanMessage(content=message)
+        ]
+        
+        response = await self.llm_rate_limiter.generate_response(
+            messages=messages,
+            use_heavy_model=True,  # Always use GPT-4 for meeting details
+            priority=True  # High priority to maintain conversation flow
+        )
+        
+        try:
+            return json.loads(response)
+        except json.JSONDecodeError:
+            return {"topic": None, "duration": None, "time": None}
+
+    async def process_message(
+        self,
+        message: str,
+        telegram_id: str,
+        conversation_context: Optional[List[Dict[str, Any]]] = None,
+        parsed_message: Optional[Any] = None,
+        intent_keywords: Optional[Dict[str, bool]] = None
+    ) -> str:
+        """
+        Process a user message and return the AI's response.
+        """
+        await self.initialize()
+
+        # Use telegram_id from parsed_message if available
+        if parsed_message and hasattr(parsed_message, "user") and hasattr(parsed_message.user, "telegram_id"):
+            telegram_id = parsed_message.user.telegram_id
+            
+        if conversation_context is None:
+            conversation_context = await self.conversation_manager.get_conversation_context(telegram_id, limit=5)
+            
+        is_returning = await self.check_contact_exists(telegram_id)
+        user_name = getattr(parsed_message.user, "full_name", None) if parsed_message and hasattr(parsed_message, "user") else None
+        
+        # State management
+        state = self.get_state(telegram_id)
+
+        # Handle cancel intent - no LLM needed
+        if intent_keywords and intent_keywords.get("cancel"):
+            self.set_state(telegram_id, "idle")
+            self.meeting_details.pop(telegram_id, None)  # Clear meeting details
+            return "I've cancelled the current operation. How can I help you?"
+
+        # Handle obvious intents without LLM
+        if intent_keywords and intent_keywords.get("wants_meeting"):
+            self.set_state(telegram_id, "scheduling_meeting")
+            return self.build_meeting_info_prompt(telegram_id)
+        elif intent_keywords and intent_keywords.get("providing_contact"):
+            self.set_state(telegram_id, "collecting_info")
+            return self.build_contact_collection_prompt(["name", "email"])
+
+        # Determine if we should use GPT-4
+        use_heavy_model = self._should_use_heavy_model(message, state)
+        
+        # Determine if this is a priority request
+        priority = self._is_priority_request(state)
+
+        # Build conversation context
+        messages = self.build_conversation_messages(
+            message=message,
+            state=state,
+            is_returning=is_returning,
+            user_name=user_name,
+            conversation_context=conversation_context
+        )
+
+        # Get response from LLM
+        response = await self.llm_rate_limiter.generate_response(
+            messages=messages,
+            use_heavy_model=use_heavy_model,
+            priority=priority
+        )
+
+        # Update state based on response
+        self._update_state_from_response(telegram_id, response)
+
+        return response
+
+    def _update_state_from_response(self, telegram_id: str, response: str):
+        """
+        Update conversation state based on LLM response.
+        """
+        state = self.get_state(telegram_id)
+        
+        # State transition logic
+        if state == "idle":
+            if "schedule" in response.lower() or "meeting" in response.lower():
+                self.set_state(telegram_id, "scheduling_meeting")
+        elif state == "scheduling_meeting":
+            if "confirmed" in response.lower() or "scheduled" in response.lower():
+                self.set_state(telegram_id, "idle")
+        elif state == "collecting_info":
+            if "thank you" in response.lower() or "received" in response.lower():
+                self.set_state(telegram_id, "idle")
+
+    def build_conversation_messages(
+        self,
+        message: str,
+        state: str,
+        is_returning: bool,
+        user_name: Optional[str],
+        conversation_context: List[Dict[str, Any]]
+    ) -> List[Any]:
+        """
+        Build the conversation messages for the LLM.
+        """
+        messages = []
+        
+        # Add system message based on state
+        if state == "scheduling_meeting":
+            messages.append(SystemMessage(content="You are helping schedule a meeting. Focus on gathering meeting details and confirming the schedule."))
+        elif state == "collecting_info":
+            messages.append(SystemMessage(content="You are collecting contact information. Focus on getting name and email."))
+        else:
+            messages.append(SystemMessage(content="You are Athena, a helpful digital assistant. Be concise and professional."))
+        
+        # Add conversation context
+        for ctx in conversation_context:
+            if ctx["sender"] == "user":
+                messages.append(HumanMessage(content=ctx["content"]))
+            else:
+                messages.append(SystemMessage(content=ctx["content"]))
+        
+        # Add current message
+        messages.append(HumanMessage(content=message))
+        
+        return messages
+
+    def get_state(self, telegram_id: str) -> str:
+        """Get the current state for a user."""
+        return self.user_states.get(telegram_id, "idle")
+
+    def set_state(self, telegram_id: str, state: str):
+        """Set the state for a user."""
+        self.user_states[telegram_id] = state
+
+    async def check_contact_exists(self, telegram_id: str) -> bool:
+        """Check if a contact exists in the database."""
+        contact = await self.db_client.get_contact_by_telegram_id(telegram_id)
+        return bool(contact)
+
+    def build_meeting_info_prompt(self, telegram_id: str) -> str:
+        """Build a prompt for collecting meeting information."""
+        return "I'll help you schedule a meeting. Please provide:\n1. Topic or purpose\n2. Preferred duration\n3. Preferred time"
+
+    def build_contact_collection_prompt(self, fields: List[str]) -> str:
+        """Build a prompt for collecting contact information."""
+        return f"Please provide your {', '.join(fields)}."
 
     def update_meeting_details(self, telegram_id: str, new_details: Dict[str, Any]) -> None:
         """
@@ -103,106 +320,6 @@ class AthenaAgent:
         
         return prompt
 
-    async def process_message(
-        self,
-        message: str,
-        telegram_id: str,
-        conversation_context: Optional[List[Dict[str, Any]]] = None,
-        parsed_message: Optional[Any] = None,
-        intent_keywords: Optional[Dict[str, bool]] = None
-    ) -> str:
-        """
-        Process a user message and return the AI's response.
-        """
-        await self.initialize()
-
-        # Use telegram_id from parsed_message if available
-        if parsed_message and hasattr(parsed_message, "user") and hasattr(parsed_message.user, "telegram_id"):
-            telegram_id = parsed_message.user.telegram_id
-        if conversation_context is None:
-            conversation_context = await self.conversation_manager.get_conversation_context(telegram_id, limit=5)
-        is_returning = await self.check_contact_exists(telegram_id)
-        user_name = getattr(parsed_message.user, "full_name", None) if parsed_message and hasattr(parsed_message, "user") else None
-        print(f"[DEBUG] process_message: telegram_id={telegram_id}, is_returning={is_returning}, user_name={user_name}")
-        
-        # State management
-        state = self.get_state(telegram_id)
-        print(f"[DEBUG] process_message: initial state={state}")
-
-        # Handle cancel intent - no LLM needed
-        if intent_keywords and intent_keywords.get("cancel"):
-            self.set_state(telegram_id, "idle")
-            self.meeting_details.pop(telegram_id, None)  # Clear meeting details
-            return "I've cancelled the current operation. How can I help you?"
-
-        # Handle obvious intents without LLM
-        if intent_keywords and intent_keywords.get("wants_meeting"):
-            self.set_state(telegram_id, "scheduling_meeting")
-            return self.build_meeting_info_prompt(telegram_id)
-        elif intent_keywords and intent_keywords.get("providing_contact"):
-            self.set_state(telegram_id, "collecting_info")
-            return self.build_contact_collection_prompt(["name", "email"])
-
-        # Handle state transitions
-        if state in (None, "idle"):
-            if not is_returning:
-                self.set_state(telegram_id, "new_contact")
-                return self.build_intro_prompt(user_name, returning=False)
-            else:
-                self.set_state(telegram_id, "returning_contact")
-                return self.build_intro_prompt(user_name, returning=True)
-
-        # Handle specific states
-        if state == "collecting_info":
-            name = getattr(parsed_message.user, "full_name", None) if parsed_message and hasattr(parsed_message, "user") else None
-            email = getattr(parsed_message.user, "email", None) if parsed_message and hasattr(parsed_message, "user") else None
-            telegram_id_val = getattr(parsed_message.user, "telegram_id", None) if parsed_message and hasattr(parsed_message, "user") else None
-            missing = []
-            if not name or not self.validate_name(name):
-                missing.append("name")
-            if not email or not self.validate_email(email):
-                missing.append("email")
-            if not telegram_id_val:
-                missing.append("telegram_id")
-            if missing:
-                return self.build_contact_collection_prompt(missing)
-            return "Thank you for providing your contact information!"
-
-        if state == "scheduling_meeting":
-            # Extract meeting details using rate-limited LLM
-            meeting_details = await self.extract_meeting_details(message)
-            
-            # Update stored meeting details
-            self.update_meeting_details(telegram_id, meeting_details)
-            
-            # Check if we have all required information
-            missing = self.get_missing_details(telegram_id)
-            if missing:
-                return self.build_meeting_info_prompt(telegram_id)
-            
-            # If we have all required information, show time options
-            options = ["Tomorrow at 10:00 AM", "Tomorrow at 2:00 PM", "The day after at 11:00 AM"]
-            return self.build_meeting_scheduling_prompt(options)
-
-        if state == "confirmation":
-            return "Your meeting has been scheduled! Here are the details:\n" + self.build_meeting_scheduling_prompt(["Your meeting details here"])
-
-        # Default response for unrecognized state
-        return "I'm here to help you schedule meetings or update your contact info. How can I assist you today?"
-
-    async def check_contact_exists(self, telegram_id: str) -> bool:
-        """
-        Check if a contact exists in Supabase by Telegram ID.
-        """
-        try:
-            print(f"[DEBUG] check_contact_exists: calling get_contact_by_telegram_id with telegram_id={telegram_id}")
-            contact = await self.db_client.get_contact_by_telegram_id(telegram_id)
-            print(f"[DEBUG] check_contact_exists: result={contact}")
-            return contact is not None
-        except Exception as e:
-            print(f"[DEBUG] check_contact_exists: exception={e}")
-            return False
-
     def build_intro_prompt(self, user_name: Optional[str] = None, returning: bool = False) -> str:
         if returning and user_name:
             return (
@@ -222,32 +339,6 @@ class AthenaAgent:
                 "I help coordinate meetings and manage contacts through natural conversation.\n"
                 "How can I assist you today?"
             )
-
-    def build_contact_collection_prompt(self, missing_fields: List[str]) -> str:
-        field_map = {
-            "name": "your name",
-            "email": "your email address",
-            "telegram_id": "your Telegram username or ID"
-        }
-        fields = ', '.join([field_map.get(f, f) for f in missing_fields])
-        return (
-            f"I still need {fields} to complete your contact information.\n"
-            "Please provide the missing details so I can assist you further."
-        )
-
-    def build_meeting_scheduling_prompt(self, options: List[str]) -> str:
-        options_text = '\n'.join([f"• {opt}" for opt in options])
-        return (
-            "Here are some available meeting times:\n"
-            f"{options_text}\n"
-            "Please let me know which one works best for you, or suggest another time."
-        )
-
-    def get_state(self, telegram_id: str) -> str:
-        return self.user_states.get(telegram_id, "idle")
-
-    def set_state(self, telegram_id: str, state: str):
-        self.user_states[telegram_id] = state
 
     def validate_name(self, name: str) -> bool:
         return bool(name and 1 < len(name.strip()) <= 100)
