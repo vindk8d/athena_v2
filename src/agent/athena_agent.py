@@ -20,16 +20,16 @@ class AthenaAgent:
     def __init__(self):
         self.llm_rate_limiter = LLMRateLimiter(
             config=RateLimitConfig(
-                min_interval=30.0,  # Increased to 30 seconds for quota-limited accounts
-                max_retries=2,  # Reduced retries for quota errors
-                initial_backoff=2.0,
-                max_backoff=60.0,  # Increased max backoff
-                backoff_factor=2.0,
-                cache_ttl=3600,  # Cache responses for 1 hour
-                max_batch_size=3,  # Reduced batch size for quota-limited accounts
-                batch_timeout=5.0,  # Increased batch timeout
-                circuit_breaker_threshold=3,  # Number of consecutive quota errors before circuit breaker
-                circuit_breaker_timeout=300.0  # 5 minutes circuit breaker timeout
+                min_interval=1.0,  # Reduced to 1 second for webhook responsiveness
+                max_retries=1,  # Reduced retries to prevent webhook timeouts
+                initial_backoff=1.0,  # Reduced backoff
+                max_backoff=5.0,  # Much reduced max backoff  
+                backoff_factor=1.5,  # Reduced backoff factor
+                cache_ttl=1800,  # Reduced cache to 30 minutes
+                max_batch_size=1,  # DISABLED BATCHING - process immediately
+                batch_timeout=0.1,  # Minimal batch timeout (effectively disabled)
+                circuit_breaker_threshold=5,  # Increased threshold to be less sensitive
+                circuit_breaker_timeout=60.0  # Reduced to 1 minute timeout
             )
         )
         self.db_client = SupabaseClient()
