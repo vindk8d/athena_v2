@@ -151,3 +151,12 @@ export const handleRealtimeSubscription = (): void => {
 export const handleRealtimeError = (): void => {
   // Implementation here
 };
+
+// New function to fetch data from the Python backend API
+export const fetchBackendData = async () => {
+  const response = await fetch('https://athena-v2-ikdq.onrender.com/health');
+  if (!response.ok) {
+    throw new Error('Failed to fetch data from backend');
+  }
+  return response.json();
+};
