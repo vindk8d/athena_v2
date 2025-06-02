@@ -8,4 +8,4 @@ export default function Meetings() {
       {/* Meetings list/components go here */}
     </main>
   );
-} 
+}

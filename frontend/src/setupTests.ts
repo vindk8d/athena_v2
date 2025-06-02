@@ -47,4 +47,4 @@ jest.mock('@supabase/auth-helpers-nextjs', () => ({
       delete: jest.fn(),
     })),
   })),
-})); 
+}));

@@ -19,7 +19,7 @@ export async function middleware(req: NextRequest) {
   }
 
   // If there's a session and the user is trying to access auth pages
-  if (session && (req.nextUrl.pathname.startsWith('/auth'))) {
+  if (session && req.nextUrl.pathname.startsWith('/auth')) {
     const redirectUrl = req.nextUrl.clone();
     redirectUrl.pathname = '/dashboard';
     return NextResponse.redirect(redirectUrl);
@@ -30,4 +30,4 @@ export async function middleware(req: NextRequest) {
 
 export const config = {
   matcher: ['/dashboard/:path*', '/auth/:path*'],
-}; 
+};

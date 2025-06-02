@@ -131,7 +131,9 @@ describe('PreferencesPanel Component', () => {
     (supabase.from as jest.Mock).mockImplementation(() => ({
       select: jest.fn().mockReturnThis(),
       eq: jest.fn().mockReturnThis(),
-      single: jest.fn().mockResolvedValue({ data: null, error: { message: 'Failed to load preferences' } }),
+      single: jest
+        .fn()
+        .mockResolvedValue({ data: null, error: { message: 'Failed to load preferences' } }),
     }));
 
     render(<PreferencesPanel userId={mockUserId} />);
@@ -141,4 +143,4 @@ describe('PreferencesPanel Component', () => {
       expect(screen.getByText(/failed to load preferences/i)).toBeInTheDocument();
     });
   });
-}); 
+});

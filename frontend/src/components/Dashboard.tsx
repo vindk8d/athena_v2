@@ -53,20 +53,18 @@ export default function Dashboard({ userId }: DashboardProps) {
     fetchData();
 
     // Subscribe to real-time updates
-    const messagesSubscription = supabase
+    const subscription = supabase
       .channel('messages')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, 
-        (payload) => {
-          // Update contacts list when new messages arrive
-          fetchData();
-        }
-      )
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, () => {
+        // Refresh messages when new ones are added
+        fetchData();
+      })
       .subscribe();
 
     return () => {
-      messagesSubscription.unsubscribe();
+      subscription.unsubscribe();
     };
-  }, [userId]);
+  }, []);
 
   if (loading) {
     return (
@@ -134,7 +132,10 @@ export default function Dashboard({ userId }: DashboardProps) {
               <TabsContent value="all" className="mt-4">
                 <ScrollArea className="h-[400px]">
                   {contacts.map((contact) => (
-                    <div key={contact.id} className="flex items-start space-x-4 p-4 border-b last:border-0">
+                    <div
+                      key={contact.id}
+                      className="flex items-start space-x-4 p-4 border-b last:border-0"
+                    >
                       <Avatar>
                         <AvatarImage src={`https://ui-avatars.com/api/?name=${contact.name}`} />
                         <AvatarFallback>{contact.name?.charAt(0) || '?'}</AvatarFallback>
@@ -169,7 +170,10 @@ export default function Dashboard({ userId }: DashboardProps) {
                       return contactDate.toDateString() === today.toDateString();
                     })
                     .map((contact) => (
-                      <div key={contact.id} className="flex items-start space-x-4 p-4 border-b last:border-0">
+                      <div
+                        key={contact.id}
+                        className="flex items-start space-x-4 p-4 border-b last:border-0"
+                      >
                         <Avatar>
                           <AvatarImage src={`https://ui-avatars.com/api/?name=${contact.name}`} />
                           <AvatarFallback>{contact.name?.charAt(0) || '?'}</AvatarFallback>
@@ -178,7 +182,9 @@ export default function Dashboard({ userId }: DashboardProps) {
                           <div className="flex items-center justify-between">
                             <p className="text-sm font-medium">{contact.name || 'Unknown'}</p>
                             <Badge variant="outline">
-                              {formatDistanceToNow(new Date(contact.created_at), { addSuffix: true })}
+                              {formatDistanceToNow(new Date(contact.created_at), {
+                                addSuffix: true,
+                              })}
                             </Badge>
                           </div>
                           <p className="text-sm text-gray-500">
@@ -206,7 +212,10 @@ export default function Dashboard({ userId }: DashboardProps) {
                       return diffDays <= 7;
                     })
                     .map((contact) => (
-                      <div key={contact.id} className="flex items-start space-x-4 p-4 border-b last:border-0">
+                      <div
+                        key={contact.id}
+                        className="flex items-start space-x-4 p-4 border-b last:border-0"
+                      >
                         <Avatar>
                           <AvatarImage src={`https://ui-avatars.com/api/?name=${contact.name}`} />
                           <AvatarFallback>{contact.name?.charAt(0) || '?'}</AvatarFallback>
@@ -215,7 +224,9 @@ export default function Dashboard({ userId }: DashboardProps) {
                           <div className="flex items-center justify-between">
                             <p className="text-sm font-medium">{contact.name || 'Unknown'}</p>
                             <Badge variant="outline">
-                              {formatDistanceToNow(new Date(contact.created_at), { addSuffix: true })}
+                              {formatDistanceToNow(new Date(contact.created_at), {
+                                addSuffix: true,
+                              })}
                             </Badge>
                           </div>
                           <p className="text-sm text-gray-500">
@@ -237,4 +248,4 @@ export default function Dashboard({ userId }: DashboardProps) {
       </div>
     </div>
   );
-} 
+}

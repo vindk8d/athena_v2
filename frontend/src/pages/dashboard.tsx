@@ -8,4 +8,4 @@ export default function Dashboard() {
       {/* Dashboard widgets/components go here */}
     </main>
   );
-} 
+}

@@ -4,7 +4,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/components/ui/use-toast';
 
@@ -61,7 +67,7 @@ export default function PreferencesPanel({ userId }: PreferencesPanelProps) {
 
         if (error) throw error;
         setPreferences(data);
-        
+
         // Parse working days from metadata if available
         if (data.metadata?.working_days) {
           setWorkingDays(data.metadata.working_days);
@@ -279,4 +285,4 @@ export default function PreferencesPanel({ userId }: PreferencesPanelProps) {
       </Card>
     </div>
   );
-} 
+}

@@ -65,7 +65,10 @@ describe('Authentication Flow', () => {
 
   it('should handle OAuth sign in', async () => {
     const mockOAuthSignIn = signInWithOAuth as jest.Mock;
-    mockOAuthSignIn.mockResolvedValueOnce({ data: { url: 'https://oauth.example.com' }, error: null });
+    mockOAuthSignIn.mockResolvedValueOnce({
+      data: { url: 'https://oauth.example.com' },
+      error: null,
+    });
 
     render(<AuthForm />);
 
@@ -100,4 +103,4 @@ describe('Authentication Flow', () => {
       expect(screen.getByText(/invalid credentials/i)).toBeInTheDocument();
     });
   });
-}); 
+});

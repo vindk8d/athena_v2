@@ -2,7 +2,15 @@ import { useEffect, useState } from 'react';
 import { Auth } from '@supabase/auth-ui-react';
 import { ThemeSupa } from '@supabase/auth-ui-shared';
 import { supabase } from '@/utils/supabase';
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card';
+import Link from 'next/link';
 
 export default function SignupPage() {
   const [redirectTo, setRedirectTo] = useState<string | undefined>(undefined);
@@ -30,14 +38,14 @@ export default function SignupPage() {
           />
         </CardContent>
         <CardFooter className="flex justify-center">
-          <p className="text-sm text-gray-600">
+          <p className="text-sm text-gray-600 mt-4">
             Already have an account?{' '}
-            <a href="/auth/login" className="text-blue-600 hover:text-blue-500">
+            <Link href="/auth/login" className="text-blue-600 hover:text-blue-700">
               Sign in
-            </a>
+            </Link>
           </p>
         </CardFooter>
       </Card>
     </div>
   );
-} 
+}

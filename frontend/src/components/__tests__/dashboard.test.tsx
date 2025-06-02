@@ -39,37 +39,39 @@ jest.mock('@/utils/supabase', () => {
           return {
             select: jest.fn(() => ({
               eq: jest.fn(() => ({
-                single: jest.fn(() => Promise.resolve({ data: userDetailsData, error: userDetailsError }))
-              }))
-            }))
+                single: jest.fn(() =>
+                  Promise.resolve({ data: userDetailsData, error: userDetailsError }),
+                ),
+              })),
+            })),
           };
         }
         if (table === 'contacts') {
           return {
             select: jest.fn(() => ({
               order: jest.fn(() => ({
-                limit: jest.fn(() => Promise.resolve({ data: contactsData, error: contactsError }))
-              }))
-            }))
+                limit: jest.fn(() => Promise.resolve({ data: contactsData, error: contactsError })),
+              })),
+            })),
           };
         }
         // Default fallback
         return {
           select: jest.fn(() => ({
             eq: jest.fn(() => ({
-              single: jest.fn(() => Promise.resolve({ data: null, error: null }))
-            }))
-          }))
+              single: jest.fn(() => Promise.resolve({ data: null, error: null })),
+            })),
+          })),
         };
       }),
       channel: jest.fn(() => ({
         on: jest.fn(() => ({
           subscribe: jest.fn(() => ({
-            unsubscribe: jest.fn()
-          }))
-        }))
-      }))
-    }
+            unsubscribe: jest.fn(),
+          })),
+        })),
+      })),
+    },
   };
 });
 
@@ -160,26 +162,28 @@ describe('Dashboard Component', () => {
         return {
           select: jest.fn(() => ({
             eq: jest.fn(() => ({
-              single: jest.fn(() => Promise.resolve({ data: mockUserDetails, error: null }))
-            }))
-          }))
+              single: jest.fn(() => Promise.resolve({ data: mockUserDetails, error: null })),
+            })),
+          })),
         };
       }
       if (table === 'contacts') {
         return {
           select: jest.fn(() => ({
             order: jest.fn(() => ({
-              limit: jest.fn(() => Promise.resolve({ data: null, error: { message: 'Failed to load contacts' } }))
-            }))
-          }))
+              limit: jest.fn(() =>
+                Promise.resolve({ data: null, error: { message: 'Failed to load contacts' } }),
+              ),
+            })),
+          })),
         };
       }
       return {
         select: jest.fn(() => ({
           eq: jest.fn(() => ({
-            single: jest.fn(() => Promise.resolve({ data: null, error: null }))
-          }))
-        }))
+            single: jest.fn(() => Promise.resolve({ data: null, error: null })),
+          })),
+        })),
       };
     });
 
@@ -199,26 +203,26 @@ describe('Dashboard Component', () => {
         return {
           select: jest.fn(() => ({
             eq: jest.fn(() => ({
-              single: jest.fn(() => Promise.resolve({ data: mockUserDetails, error: null }))
-            }))
-          }))
+              single: jest.fn(() => Promise.resolve({ data: mockUserDetails, error: null })),
+            })),
+          })),
         };
       }
       if (table === 'contacts') {
         return {
           select: jest.fn(() => ({
             order: jest.fn(() => ({
-              limit: jest.fn(() => Promise.resolve({ data: [], error: null }))
-            }))
-          }))
+              limit: jest.fn(() => Promise.resolve({ data: [], error: null })),
+            })),
+          })),
         };
       }
       return {
         select: jest.fn(() => ({
           eq: jest.fn(() => ({
-            single: jest.fn(() => Promise.resolve({ data: null, error: null }))
-          }))
-        }))
+            single: jest.fn(() => Promise.resolve({ data: null, error: null })),
+          })),
+        })),
       };
     });
 
@@ -229,4 +233,4 @@ describe('Dashboard Component', () => {
       expect(screen.getByText(/no contacts found/i)).toBeInTheDocument();
     });
   });
-}); 
+});

@@ -8,4 +8,4 @@ export default function Contacts() {
       {/* Contacts list/components go here */}
     </main>
   );
-} 
+}

@@ -23,7 +23,7 @@ export const supabase = createClient<Database>(
         eventsPerSecond: 10,
       },
     },
-  }
+  },
 );
 
 // Auth helper functions
@@ -98,17 +98,21 @@ export const getContactMessages = async (contactId: string, limit = 50) => {
 };
 
 // Realtime subscriptions
-export const subscribeToNewMessages = (callback: (payload: any) => void) => {
+export const subscribeToNewMessages = (callback: (payload: Message) => void) => {
   return supabase
     .channel('messages')
-    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, callback)
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, (payload) => {
+      callback(payload.new as Message);
+    })
     .subscribe();
 };
 
-export const subscribeToContactUpdates = (callback: (payload: any) => void) => {
+export const subscribeToContactUpdates = (callback: (payload: Contact) => void) => {
   return supabase
     .channel('contacts')
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'contacts' }, callback)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'contacts' }, (payload) => {
+      callback(payload.new as Contact);
+    })
     .subscribe();
 };
 
@@ -138,4 +142,12 @@ export interface UserDetails {
 }
 
 export type Contact = Database['public']['Tables']['contacts']['Row'];
-export type Message = Database['public']['Tables']['messages']['Row']; 
+export type Message = Database['public']['Tables']['messages']['Row'];
+
+export const handleRealtimeSubscription = (callback: (payload: Message) => void): void => {
+  // Implementation here
+};
+
+export const handleRealtimeError = (error: Error): void => {
+  // Implementation here
+};
