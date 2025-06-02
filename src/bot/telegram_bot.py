@@ -40,7 +40,9 @@ from src.utils.message_formatting import (
     format_info_message,
     format_error_message,
     format_confirmation_message,
+    format_warning_message
 )
+from src.utils.llm_rate_limiter import QuotaExceededError, CircuitBreakerError
 
 # Configure logging
 logging.basicConfig(
@@ -397,13 +399,53 @@ class AthenaTelegramBot:
                 msg = format_error_message(error_message)
                 await self.send_message(update.effective_chat.id, msg["text"], parse_mode=msg["parse_mode"])
         
+        except QuotaExceededError as e:
+            logger.error(f"OpenAI quota exceeded: {e}")
+            quota_message = (
+                "Hey there! 👋 I'm currently experiencing a bit of a traffic jam with all the requests "
+                "coming in. This usually clears up in just a few minutes.\n\n"
+                "While you wait, you can:\n"
+                "• Share your meeting details, and I'll note them down\n"
+                "• Ask me about my capabilities\n"
+                "• Try again in about 2-3 minutes\n\n"
+                "I'll be back at full speed before you know it! Thanks for your patience! 🙏"
+            )
+            msg = format_warning_message(quota_message)
+            await self.send_message(update.effective_chat.id, msg["text"], parse_mode=msg["parse_mode"])
+        
+        except CircuitBreakerError as e:
+            logger.warning(f"Circuit breaker open: {e}")
+            circuit_breaker_message = (
+                "Hey! 😊 I'm just taking a quick breather to handle some high demand. "
+                "I'm still here to help, but my responses might be a bit simpler for the next few minutes.\n\n"
+                "You can still:\n"
+                "• Share your meeting requirements - I'll make sure to note them\n"
+                "• Ask me questions about what I can do\n"
+                "• Try again in about 5 minutes for my full capabilities\n\n"
+                "I appreciate your patience while I recover! 💪"
+            )
+            msg = format_warning_message(circuit_breaker_message)
+            await self.send_message(update.effective_chat.id, msg["text"], parse_mode=msg["parse_mode"])
+        
         except Exception as e:
             logger.error(f"Error handling message: {e}")
-            error_message = (
-                "I apologize, but I encountered an issue processing your message. "
-                "Please try again in a moment, or use /help if you need assistance."
-            )
-            msg = format_error_message(error_message)
+            # Check if it's a specific OpenAI error
+            if "openai" in str(e).lower() or "api" in str(e).lower():
+                error_message = (
+                    "Hey there! 👋 I'm just taking a quick break to handle some high demand. "
+                    "I'll be back to my full self in a moment, but I'm still here to help with basic requests! "
+                    "Feel free to share what you need, and I'll make sure to handle it as soon as I'm back at full speed. "
+                    "Thanks for your patience! 🙏"
+                )
+                msg = format_warning_message(error_message)
+            else:
+                error_message = (
+                    "Oops! 😅 I hit a small bump in the road while processing your message. "
+                    "I'm still here to help though! Could you try sending your message again? "
+                    "If you need any assistance, just type /help and I'll guide you through it! 💪"
+                )
+                msg = format_error_message(error_message)
+            
             await self.send_message(update.effective_chat.id, msg["text"], parse_mode=msg["parse_mode"])
     
     async def handle_callback_query(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

@@ -20,14 +20,16 @@ class AthenaAgent:
     def __init__(self):
         self.llm_rate_limiter = LLMRateLimiter(
             config=RateLimitConfig(
-                min_interval=20.0,  # Minimum 20 seconds between requests
-                max_retries=3,
-                initial_backoff=1.0,
-                max_backoff=32.0,
+                min_interval=30.0,  # Increased to 30 seconds for quota-limited accounts
+                max_retries=2,  # Reduced retries for quota errors
+                initial_backoff=2.0,
+                max_backoff=60.0,  # Increased max backoff
                 backoff_factor=2.0,
                 cache_ttl=3600,  # Cache responses for 1 hour
-                max_batch_size=5,  # Process up to 5 requests in a batch
-                batch_timeout=2.0  # Wait up to 2 seconds for batch
+                max_batch_size=3,  # Reduced batch size for quota-limited accounts
+                batch_timeout=5.0,  # Increased batch timeout
+                circuit_breaker_threshold=3,  # Number of consecutive quota errors before circuit breaker
+                circuit_breaker_timeout=300.0  # 5 minutes circuit breaker timeout
             )
         )
         self.db_client = SupabaseClient()
@@ -222,11 +224,25 @@ class AthenaAgent:
         
         # Add system message based on state
         if state == "scheduling_meeting":
-            messages.append(SystemMessage(content="You are helping schedule a meeting. Focus on gathering meeting details and confirming the schedule."))
+            messages.append(SystemMessage(content=(
+                "You are helping schedule a meeting. Be friendly and conversational while gathering "
+                "meeting details. Use natural language and occasional emojis to make the conversation "
+                "more engaging. Focus on understanding the user's needs and confirming the schedule. "
+                "Be proactive in suggesting optimal meeting durations and times if the user is unsure."
+            )))
         elif state == "collecting_info":
-            messages.append(SystemMessage(content="You are collecting contact information. Focus on getting name and email."))
+            messages.append(SystemMessage(content=(
+                "You are collecting contact information. Be warm and professional while gathering "
+                "name and email. Use natural language and make the user feel comfortable sharing "
+                "their information. Explain why you need each piece of information if asked."
+            )))
         else:
-            messages.append(SystemMessage(content="You are Athena, a helpful digital assistant. Be concise and professional."))
+            messages.append(SystemMessage(content=(
+                "You are Athena, a friendly and helpful digital assistant. Be conversational, "
+                "warm, and professional. Use natural language and occasional emojis to make the "
+                "conversation more engaging. Be concise but personable. Show personality while "
+                "maintaining professionalism. Remember previous interactions and maintain context."
+            )))
         
         # Add conversation context
         for ctx in conversation_context:

@@ -9,6 +9,7 @@ from src.agent.athena_agent import AthenaAgent
 import time
 import asyncio
 from langchain.schema import HumanMessage
+from langchain_openai import ChatOpenAI
 
 @pytest_asyncio.fixture
 async def athena_agent():
@@ -310,34 +311,30 @@ async def test_response_caching(athena_agent):
 async def test_rate_limit_backoff(athena_agent):
     attempt_count = 0
     
-    async def mock_generate_response(*args, **kwargs):
+    async def mock_ainvoke(self, messages, *args, **kwargs):
         nonlocal attempt_count
-        
-        # Simulate internal retry logic with backoff
-        backoff = athena_agent.llm_rate_limiter.config.initial_backoff
-        for retry in range(athena_agent.llm_rate_limiter.config.max_retries):
-            attempt_count += 1
-            if attempt_count <= 2:
-                await asyncio.sleep(backoff)
-                backoff *= athena_agent.llm_rate_limiter.config.backoff_factor
-                continue
-            else:
-                await asyncio.sleep(0.1)
-                return "I understand you want to schedule a meeting."
-        
-        # This shouldn't be reached in our test
-        raise Exception("Max retries exceeded")
-    
-    with patch.object(athena_agent.llm_rate_limiter, 'generate_response', mock_generate_response):
+        attempt_count += 1
+        if attempt_count <= 2:
+            raise Exception("rate limit exceeded: too many requests")
+        class Response:
+            content = "I understand you want to schedule a meeting."
+        return Response()
+
+    with patch.object(ChatOpenAI, 'ainvoke', mock_ainvoke):
         start_time = time.time()
-        response = await athena_agent.process_message("Hello", "123")
+        response = await athena_agent.llm_rate_limiter.generate_response(
+            messages=[HumanMessage(content="Hello")],
+            use_heavy_model=False,
+            priority=True
+        )
         total_time = time.time() - start_time
         
-        assert attempt_count == 3
+        assert attempt_count == 3, f"Expected 3 attempts, got {attempt_count}"
+        assert "I understand you want to schedule a meeting" in response
         expected_backoff = athena_agent.llm_rate_limiter.config.initial_backoff + \
             athena_agent.llm_rate_limiter.config.initial_backoff * athena_agent.llm_rate_limiter.config.backoff_factor
         assert total_time >= expected_backoff, \
-            f"Backoff time {total_time:.2f}s was less than expected"
+            f"Backoff time {total_time:.2f}s was less than expected {expected_backoff:.2f}s"
 
 @pytest.mark.asyncio
 async def test_batch_processing(athena_agent):
