@@ -144,10 +144,10 @@ export interface UserDetails {
 export type Contact = Database['public']['Tables']['contacts']['Row'];
 export type Message = Database['public']['Tables']['messages']['Row'];
 
-export const handleRealtimeSubscription = (callback: (payload: Message) => void): void => {
+export const handleRealtimeSubscription = (): void => {
   // Implementation here
 };
 
-export const handleRealtimeError = (error: Error): void => {
+export const handleRealtimeError = (): void => {
   // Implementation here
 };
