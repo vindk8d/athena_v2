@@ -6,7 +6,9 @@ Provides helpers for formatting Telegram bot responses safely in Markdown, HTML,
 
 import html
 import re
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
+from datetime import datetime
+from src.calendar.google_calendar import CalendarEvent
 
 # Telegram MarkdownV2 special characters that must be escaped
 TELEGRAM_MARKDOWN_V2_SPECIALS = r'_\*\[\]\(\)~`>#+\-=|{}.!'
@@ -119,6 +121,156 @@ def format_contact_info(details: Dict[str, Any], markdown: bool = True) -> Dict[
         return {"text": text, "parse_mode": "HTML"}
 
 
+def format_meeting_confirmation(
+    event: CalendarEvent,
+    timezone: str = 'UTC',
+    include_attendees: bool = True
+) -> str:
+    """
+    Format a meeting confirmation message for Telegram delivery.
+    
+    Args:
+        event: Calendar event details
+        timezone: Timezone for displaying times
+        include_attendees: Whether to include attendee list
+        
+    Returns:
+        Formatted message string
+    """
+    # Format times in the specified timezone
+    start_time = event.start.strftime('%I:%M %p')
+    end_time = event.end.strftime('%I:%M %p')
+    date = event.start.strftime('%A, %B %d, %Y')
+    
+    # Build message
+    message = [
+        f"✅ Meeting Scheduled Successfully!",
+        f"\n📅 {date}",
+        f"⏰ {start_time} - {end_time}",
+        f"📝 {event.summary}"
+    ]
+    
+    if event.description:
+        message.append(f"\n📋 {event.description}")
+    
+    if event.location:
+        message.append(f"\n📍 {event.location}")
+    
+    if include_attendees and event.attendees:
+        message.append("\n👥 Attendees:")
+        for attendee in event.attendees:
+            message.append(f"• {attendee}")
+    
+    message.append(f"\n\n🔗 View in Calendar: {event.html_link}")
+    
+    return "\n".join(message)
+
+
+def format_meeting_suggestions(
+    slots: List[CalendarEvent],
+    timezone: str = 'UTC'
+) -> str:
+    """
+    Format meeting slot suggestions for Telegram delivery.
+    
+    Args:
+        slots: List of available time slots
+        timezone: Timezone for displaying times
+        
+    Returns:
+        Formatted message string
+    """
+    if not slots:
+        return "❌ No available time slots found in the specified range."
+    
+    message = ["📅 Available Time Slots:"]
+    
+    for i, slot in enumerate(slots, 1):
+        start_time = slot.start.strftime('%I:%M %p')
+        end_time = slot.end.strftime('%I:%M %p')
+        date = slot.start.strftime('%A, %B %d')
+        
+        message.append(f"\n{i}. {date} at {start_time} - {end_time}")
+    
+    message.append("\nPlease select a time slot by replying with the number.")
+    
+    return "\n".join(message)
+
+
+def format_meeting_cancellation(
+    event: CalendarEvent,
+    timezone: str = 'UTC'
+) -> str:
+    """
+    Format a meeting cancellation message for Telegram delivery.
+    
+    Args:
+        event: Calendar event details
+        timezone: Timezone for displaying times
+        
+    Returns:
+        Formatted message string
+    """
+    start_time = event.start.strftime('%I:%M %p')
+    end_time = event.end.strftime('%I:%M %p')
+    date = event.start.strftime('%A, %B %d, %Y')
+    
+    message = [
+        "❌ Meeting Cancelled",
+        f"\n📅 {date}",
+        f"⏰ {start_time} - {end_time}",
+        f"📝 {event.summary}"
+    ]
+    
+    if event.description:
+        message.append(f"\n📋 {event.description}")
+    
+    return "\n".join(message)
+
+
+def format_meeting_update(
+    event: CalendarEvent,
+    timezone: str = 'UTC',
+    include_attendees: bool = True
+) -> str:
+    """
+    Format a meeting update message for Telegram delivery.
+    
+    Args:
+        event: Calendar event details
+        timezone: Timezone for displaying times
+        include_attendees: Whether to include attendee list
+        
+    Returns:
+        Formatted message string
+    """
+    start_time = event.start.strftime('%I:%M %p')
+    end_time = event.end.strftime('%I:%M %p')
+    date = event.start.strftime('%A, %B %d, %Y')
+    
+    message = [
+        "🔄 Meeting Updated",
+        f"\n📅 {date}",
+        f"⏰ {start_time} - {end_time}",
+        f"📝 {event.summary}"
+    ]
+    
+    if event.description:
+        message.append(f"\n📋 {event.description}")
+    
+    if event.location:
+        message.append(f"\n📍 {event.location}")
+    
+    if include_attendees and event.attendees:
+        message.append("\n👥 Attendees:")
+        for attendee in event.attendees:
+            message.append(f"• {attendee}")
+    
+    message.append(f"\n\n🔗 View in Calendar: {event.html_link}")
+    
+    return "\n".join(message)
+
+
 # Exported functions
 __all__ = [
     'escape_markdown',
@@ -129,4 +281,8 @@ __all__ = [
     'format_warning_message',
     'format_meeting_details',
     'format_contact_info',
+    'format_meeting_confirmation',
+    'format_meeting_suggestions',
+    'format_meeting_cancellation',
+    'format_meeting_update',
 ] 

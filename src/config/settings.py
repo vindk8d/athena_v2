@@ -30,7 +30,8 @@ class Settings:
             "TELEGRAM_BOT_TOKEN",
             "OPENAI_API_KEY",
             "GOOGLE_CLIENT_ID",
-            "GOOGLE_CLIENT_SECRET"
+            "GOOGLE_CLIENT_SECRET",
+            "GOOGLE_CALENDAR_CREDENTIALS_FILE"
         ]
         
         missing_vars = []
@@ -101,6 +102,21 @@ class Settings:
     def google_redirect_uri(self) -> str:
         """Google OAuth redirect URI."""
         return os.getenv("GOOGLE_REDIRECT_URI", f"http://localhost:{self.frontend_port}/auth/callback/google")
+    
+    @property
+    def google_calendar_credentials_file(self) -> str:
+        """Path to Google Calendar credentials file."""
+        return os.getenv("GOOGLE_CALENDAR_CREDENTIALS_FILE", "credentials/google_calendar_credentials.json")
+    
+    @property
+    def google_calendar_client_secrets(self) -> str:
+        """Path to Google Calendar client secrets file."""
+        return os.getenv("GOOGLE_CALENDAR_CLIENT_SECRETS", "credentials/google_calendar_client_secrets.json")
+    
+    @property
+    def google_calendar_redirect_uri(self) -> str:
+        """Google Calendar OAuth redirect URI."""
+        return os.getenv("GOOGLE_CALENDAR_REDIRECT_URI", f"http://localhost:{self.frontend_port}/auth/callback/google/calendar")
     
     # Application Configuration
     @property
