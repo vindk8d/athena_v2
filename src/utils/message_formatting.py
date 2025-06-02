@@ -57,6 +57,14 @@ def format_confirmation_message(text: str, markdown: bool = True) -> Dict[str, A
     return format_info_message(prefix + text, markdown=markdown)
 
 
+def format_warning_message(text: str, markdown: bool = True) -> Dict[str, Any]:
+    """
+    Format a warning message for Telegram.
+    """
+    prefix = "⚠️ "
+    return format_info_message(prefix + text, markdown=markdown)
+
+
 def format_meeting_details(details: Dict[str, Any], markdown: bool = True) -> Dict[str, Any]:
     """
     Format meeting details for Telegram.
@@ -118,6 +126,7 @@ __all__ = [
     'format_info_message',
     'format_error_message',
     'format_confirmation_message',
+    'format_warning_message',
     'format_meeting_details',
     'format_contact_info',
 ] 
