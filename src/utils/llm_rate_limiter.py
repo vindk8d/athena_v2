@@ -326,55 +326,56 @@ class LLMRateLimiter:
         if cached_response:
             return cached_response
 
-        if not priority:
+        # Always process user messages immediately (no batching/delays)
+        if priority:
+            async with self.lock:
+                await self._wait_for_rate_limit()
+                
+                # Try the request with exponential backoff
+                backoff = self.config.initial_backoff
+                for attempt in range(self.config.max_retries + 1):
+                    try:
+                        model = self.heavy_model if use_heavy_model else self.light_model
+                        response = await model.ainvoke(messages)
+                        self.last_request_time = time.time()
+                        
+                        # Reset quota error count on successful request
+                        self._quota_error_count = 0
+                        
+                        # Cache the response
+                        self._cache_response(cache_key, response.content)
+                        
+                        return response.content
+                        
+                    except Exception as e:
+                        error_str = str(e)
+                        logger.error(f"Error in _make_request (attempt {attempt + 1}): {e}")
+                        
+                        if self._is_quota_error(error_str):
+                            self._quota_error_count += 1
+                            logger.error(f"Quota error detected (count: {self._quota_error_count}): {e}")
+                            # Don't retry quota errors, raise immediately
+                            raise QuotaExceededError(f"OpenAI quota exceeded: {e}")
+                        
+                        elif self._is_rate_limit_error(error_str):
+                            if attempt < self.config.max_retries:
+                                wait_time = min(backoff, self.config.max_backoff)
+                                logger.warning(f"Rate limit hit, waiting {wait_time:.1f} seconds before retry")
+                                await asyncio.sleep(wait_time)
+                                backoff *= self.config.backoff_factor
+                                continue
+                            else:
+                                logger.error(f"Max retries exceeded for rate limit: {e}")
+                                raise
+                        else:
+                            # Other errors - don't retry
+                            logger.error(f"Non-recoverable error: {e}")
+                            raise
+        else:
             # Queue low-priority requests
             future = asyncio.Future()
             await self.queue.put((future, messages, use_heavy_model))
             return await future
-
-        async with self.lock:
-            await self._wait_for_rate_limit()
-            
-            # Try the request with exponential backoff
-            backoff = self.config.initial_backoff
-            for attempt in range(self.config.max_retries + 1):
-                try:
-                    model = self.heavy_model if use_heavy_model else self.light_model
-                    response = await model.ainvoke(messages)
-                    self.last_request_time = time.time()
-                    
-                    # Reset quota error count on successful request
-                    self._quota_error_count = 0
-                    
-                    # Cache the response
-                    self._cache_response(cache_key, response.content)
-                    
-                    return response.content
-                    
-                except Exception as e:
-                    error_str = str(e)
-                    logger.error(f"Error in _make_request (attempt {attempt + 1}): {e}")
-                    
-                    if self._is_quota_error(error_str):
-                        self._quota_error_count += 1
-                        logger.error(f"Quota error detected (count: {self._quota_error_count}): {e}")
-                        # Don't retry quota errors, raise immediately
-                        raise QuotaExceededError(f"OpenAI quota exceeded: {e}")
-                    
-                    elif self._is_rate_limit_error(error_str):
-                        if attempt < self.config.max_retries:
-                            wait_time = min(backoff, self.config.max_backoff)
-                            logger.warning(f"Rate limit hit, waiting {wait_time:.1f} seconds before retry")
-                            await asyncio.sleep(wait_time)
-                            backoff *= self.config.backoff_factor
-                            continue
-                        else:
-                            logger.error(f"Max retries exceeded for rate limit: {e}")
-                            raise
-                    else:
-                        # Other errors - don't retry
-                        logger.error(f"Non-recoverable error: {e}")
-                        raise
 
     async def extract_meeting_details(self, message: str) -> Dict[str, Any]:
         """

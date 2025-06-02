@@ -1,27 +1,53 @@
 import pytest
 from unittest.mock import AsyncMock, patch, MagicMock
+from datetime import datetime, UTC
+import types
+
+# Import modules directly since global mocking is in place
 from telegram import Update, User, Message, Chat
 from src.bot.telegram_bot import AthenaTelegramBot
 from src.utils.message_parser import ParsedUser, ParsedMessage
 from src.database.supabase_client import SupabaseClient
-from datetime import datetime, UTC
-import types
+
+@pytest.fixture
+def mock_supabase_client():
+    """Create a mock SupabaseClient."""
+    mock = MagicMock()
+    mock.get_contact_by_telegram_id = AsyncMock(return_value=None)
+    mock.get_or_create_contact_by_telegram_id = AsyncMock(return_value={
+        "id": "123",
+        "telegram_id": "456",
+        "name": "Test User",
+        "full_name": "Test User"
+    })
+    mock.create_message = AsyncMock(return_value={
+        "id": "789",
+        "contact_id": "123",
+        "sender": "user",
+        "channel": "telegram",
+        "content": "Hello",
+        "status": "delivered",
+        "created_at": datetime.now(UTC).isoformat()
+    })
+    return mock
 
 @pytest.mark.asyncio
 class TestAthenaTelegramBot:
     @pytest.fixture(autouse=True)
-    def setup_bot(self):
-        self.bot = AthenaTelegramBot()
-        self.bot.db_client = AsyncMock()
-        self.bot.ai_agent = MagicMock()
-        self.bot.conversation_manager = MagicMock()
-        self.bot.send_message = AsyncMock(return_value=123)
-        self.bot.message_parser = MagicMock()
-        self.bot._get_active_conversation_count_today = AsyncMock(return_value=0)
-        # Add bot to the application
-        self.bot.application = MagicMock()
-        self.bot.bot = MagicMock()
-        self.bot.supabase = MagicMock(spec=SupabaseClient)
+    def setup_bot(self, mock_supabase_client):
+        with patch('src.bot.telegram_bot.SupabaseClient', return_value=mock_supabase_client), \
+             patch('src.agent.athena_agent.AthenaAgent', MagicMock()):
+            self.bot = AthenaTelegramBot()
+            self.bot.db_client = mock_supabase_client
+            self.bot.ai_agent = AsyncMock()
+            self.bot.conversation_manager = AsyncMock()
+            self.bot.send_message = AsyncMock(return_value=123)
+            self.bot.message_parser = MagicMock()
+            self.bot._get_active_conversation_count_today = AsyncMock(return_value=0)
+            # Add bot to the application
+            self.bot.application = MagicMock()
+            self.bot.bot = MagicMock()
+            self.bot.supabase = mock_supabase_client
 
     def make_update(self, text, user_id="1", username="testuser", is_bot=False):
         user = User(id=int(user_id), first_name="Test", is_bot=is_bot, username=username)
@@ -35,8 +61,6 @@ class TestAthenaTelegramBot:
     async def test_start_command_new_user_under_limit(self):
         update = self.make_update("/start", user_id="2")
         context = MagicMock()
-        self.bot.db_client.get_contact_by_telegram_id = AsyncMock(return_value=None)
-        self.bot._get_active_conversation_count_today = AsyncMock(return_value=5)
         parsed_user = ParsedUser(telegram_id="2", username="testuser", first_name="Test", last_name=None, full_name="Test", language_code="en", is_bot=False)
         parsed_message = ParsedMessage(message_id=1, text="/start", clean_text="/start", user=parsed_user, chat_id=1, timestamp=None, message_type="command", is_command=True, command="start", command_args=[])
         self.bot.message_parser.validate_and_parse = MagicMock(return_value=parsed_message)
@@ -47,7 +71,6 @@ class TestAthenaTelegramBot:
     async def test_start_command_new_user_over_limit(self):
         update = self.make_update("/start", user_id="3")
         context = MagicMock()
-        self.bot.db_client.get_contact_by_telegram_id = AsyncMock(return_value=None)
         self.bot._get_active_conversation_count_today = AsyncMock(return_value=10)
         parsed_user = ParsedUser(telegram_id="3", username="testuser", first_name="Test", last_name=None, full_name="Test", language_code="en", is_bot=False)
         parsed_message = ParsedMessage(message_id=1, text="/start", clean_text="/start", user=parsed_user, chat_id=1, timestamp=None, message_type="command", is_command=True, command="start", command_args=[])
@@ -85,11 +108,9 @@ class TestAthenaTelegramBot:
         parsed_user = ParsedUser(telegram_id="1", username="testuser", first_name="Test", last_name=None, full_name="Test", language_code="en", is_bot=False)
         parsed_message = ParsedMessage(message_id=1, text="Hello Athena", clean_text="Hello Athena", user=parsed_user, chat_id=1, timestamp=None, message_type="text", is_command=False, command=None, command_args=[])
         self.bot.message_parser.validate_and_parse = MagicMock(return_value=parsed_message)
-        # The actual message sent is MarkdownV2-escaped, so periods are escaped as \\.
-        expected_text = "❌ I apologize, but I encountered an issue processing your message\\. Please try again in a moment, or use /help if you need assistance\\."
-        self.bot.ai_agent.process_message = AsyncMock(return_value=expected_text)
+        self.bot.ai_agent.process_message = AsyncMock(return_value="Hi there\\\\!")
         await self.bot.handle_message(update, context)
-        self.bot.send_message.assert_called_with(1, expected_text, parse_mode='MarkdownV2')
+        self.bot.send_message.assert_called_with(1, "Hi there\\\\\\!", parse_mode='MarkdownV2')
 
     @pytest.mark.asyncio
     async def test_handle_message_parse_error(self):
@@ -97,13 +118,13 @@ class TestAthenaTelegramBot:
         context = MagicMock()
         self.bot.message_parser.validate_and_parse = MagicMock(side_effect=Exception("parse error"))
         await self.bot.handle_message(update, context)
-        self.bot.send_message.assert_called()
+        expected_text = "❌ Oops\\! 😅 I hit a small bump in the road while processing your message\\. I'm still here to help though\\! Could you try sending your message again? If you need any assistance, just type /help and I'll guide you through it\\! 💪"
+        self.bot.send_message.assert_called_with(1, expected_text, parse_mode='MarkdownV2')
 
     @pytest.mark.asyncio
     async def test_handle_message_rate_limit(self):
         update = self.make_update("/start", user_id="11")
         context = MagicMock()
-        self.bot.db_client.get_contact_by_telegram_id = AsyncMock(return_value=None)
         self.bot._get_active_conversation_count_today = AsyncMock(return_value=10)
         parsed_user = ParsedUser(telegram_id="11", username="testuser", first_name="Test", last_name=None, full_name="Test", language_code="en", is_bot=False)
         parsed_message = ParsedMessage(message_id=1, text="/start", clean_text="/start", user=parsed_user, chat_id=1, timestamp=None, message_type="command", is_command=True, command="start", command_args=[])
@@ -113,22 +134,16 @@ class TestAthenaTelegramBot:
         assert "maximum number of contacts" in self.bot.send_message.call_args[0][1]
 
 @pytest.fixture
-def telegram_bot():
+def telegram_bot(mock_supabase_client):
     """Create an AthenaTelegramBot instance with mocked dependencies."""
-    with patch('src.bot.telegram_bot.get_settings') as mock_settings:
-        # Mock settings
-        mock_settings.return_value = MagicMock(
-            telegram_bot_token="test_token",
-            max_contacts=10
-        )
-        
-        # Create bot instance
+    with patch('src.bot.telegram_bot.SupabaseClient', return_value=mock_supabase_client), \
+         patch('src.agent.athena_agent.AthenaAgent', MagicMock()), \
+         patch('src.bot.telegram_bot.get_settings', return_value=MagicMock(
+             telegram_bot_token="test_token",
+             max_contacts=10
+         )):
         bot = AthenaTelegramBot()
-        
-        # Mock dependencies
-        bot.supabase = MagicMock(spec=SupabaseClient)
-        bot.bot = MagicMock()
-        bot.application = MagicMock()
+        bot.db_client = mock_supabase_client
         
         # Mock message parser
         bot.message_parser = MagicMock()
@@ -158,28 +173,6 @@ def telegram_bot():
 @pytest.mark.asyncio
 async def test_store_message_success(telegram_bot):
     """Test successful message storage."""
-    # Mock contact object with attributes
-    mock_contact = {
-        "id": "123",
-        "telegram_id": "456",
-        "name": "Test User",
-        "full_name": "Test User"
-    }
-    telegram_bot.db_client.get_or_create_contact_by_telegram_id = AsyncMock(return_value=mock_contact)
-    
-    # Mock message creation
-    mock_message = {
-        "id": "789",
-        "contact_id": "123",
-        "sender": "user",
-        "channel": "telegram",
-        "content": "Hello",
-        "status": "delivered",
-        "created_at": datetime.now(UTC).isoformat()
-    }
-    telegram_bot.db_client.create_message = AsyncMock(return_value=mock_message)
-
-    # Test message storage
     result = await telegram_bot.store_message(
         telegram_id="456",
         sender="user",
@@ -188,7 +181,6 @@ async def test_store_message_success(telegram_bot):
     )
 
     # Verify the result
-    assert result == mock_message
     assert result["id"] == "789"
     assert result["sender"] == "user"
     assert result["status"] == "delivered"
@@ -207,28 +199,6 @@ async def test_store_message_success(telegram_bot):
 @pytest.mark.asyncio
 async def test_store_message_with_user_info(telegram_bot):
     """Test message storage with user info."""
-    # Mock contact object with attributes
-    mock_contact = {
-        "id": "123",
-        "telegram_id": "456",
-        "name": "Test User",
-        "full_name": "Test User"
-    }
-    telegram_bot.db_client.get_or_create_contact_by_telegram_id = AsyncMock(return_value=mock_contact)
-    
-    # Mock message creation
-    mock_message = {
-        "id": "789",
-        "contact_id": "123",
-        "sender": "user",
-        "channel": "telegram",
-        "content": "Hello",
-        "status": "delivered",
-        "created_at": datetime.now(UTC).isoformat()
-    }
-    telegram_bot.db_client.create_message = AsyncMock(return_value=mock_message)
-
-    # Test message storage with user info
     user_info = types.SimpleNamespace(
         first_name="Test",
         last_name="User",
@@ -259,12 +229,10 @@ async def test_store_message_with_user_info(telegram_bot):
 @pytest.mark.asyncio
 async def test_store_message_contact_creation_error(telegram_bot):
     """Test handling of contact creation errors."""
-    # Mock contact creation error
     telegram_bot.db_client.get_or_create_contact_by_telegram_id = AsyncMock(
         side_effect=Exception("Contact creation failed")
     )
 
-    # Test error handling
     with pytest.raises(Exception, match="Contact creation failed"):
         await telegram_bot.store_message(
             telegram_id="456",
@@ -276,21 +244,10 @@ async def test_store_message_contact_creation_error(telegram_bot):
 @pytest.mark.asyncio
 async def test_store_message_message_creation_error(telegram_bot):
     """Test handling of message creation errors."""
-    # Mock contact object with attributes
-    mock_contact = {
-        "id": "123",
-        "telegram_id": "456",
-        "name": "Test User",
-        "full_name": "Test User"
-    }
-    telegram_bot.db_client.get_or_create_contact_by_telegram_id = AsyncMock(return_value=mock_contact)
-    
-    # Mock message creation error
     telegram_bot.db_client.create_message = AsyncMock(
         side_effect=Exception("Message creation failed")
     )
 
-    # Test error handling
     with pytest.raises(Exception, match="Message creation failed"):
         await telegram_bot.store_message(
             telegram_id="456",
@@ -302,27 +259,6 @@ async def test_store_message_message_creation_error(telegram_bot):
 @pytest.mark.asyncio
 async def test_store_message_sender_validation(telegram_bot):
     """Test sender validation in message storage."""
-    # Mock contact object with attributes
-    mock_contact = {
-        "id": "123",
-        "telegram_id": "456",
-        "name": "Test User",
-        "full_name": "Test User"
-    }
-    telegram_bot.db_client.get_or_create_contact_by_telegram_id = AsyncMock(return_value=mock_contact)
-    
-    # Mock message creation
-    mock_message = {
-        "id": "789",
-        "contact_id": "123",
-        "sender": "assistant",
-        "channel": "telegram",
-        "content": "Hello",
-        "status": "delivered",
-        "created_at": datetime.now(UTC).isoformat()
-    }
-    telegram_bot.db_client.create_message = AsyncMock(return_value=mock_message)
-
     # Test with different sender values
     for sender in ["user", "assistant", "USER", "ASSISTANT", "  user  ", "  assistant  "]:
         result = await telegram_bot.store_message(

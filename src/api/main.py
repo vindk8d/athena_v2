@@ -1,7 +1,8 @@
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, BackgroundTasks, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from src.bot.telegram_bot import AthenaTelegramBot
 from src.config.settings import Settings
+from src.api.webhook_handler import WebhookHandler
 
 app = FastAPI(title="Athena Digital Assistant API")
 settings = Settings()
@@ -15,16 +16,24 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Initialize Telegram bot
-bot = AthenaTelegramBot()
+# Initialize webhook handler
+webhook_handler = WebhookHandler()
 
 @app.post("/webhook")
-async def telegram_webhook(request: Request):
+async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
     """Handle incoming Telegram webhook requests."""
     try:
-        update = await request.json()
-        await bot.handle_update(update)
+        # Try to parse JSON body
+        try:
+            update = await request.json()
+        except Exception as e:
+            raise HTTPException(status_code=422, detail="Invalid JSON format")
+        
+        # Acknowledge the webhook immediately
+        background_tasks.add_task(webhook_handler.process_telegram_update, update)
         return {"status": "ok"}
+    except HTTPException:
+        raise
     except Exception as e:
         return {"status": "error", "message": str(e)}
 

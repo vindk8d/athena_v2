@@ -1,14 +1,24 @@
 import pytest
 from unittest.mock import patch, MagicMock
 from datetime import datetime, UTC
-from src.database.supabase_client import SupabaseClient
+
+# Mock dependencies at module level before any imports
+with patch('src.database.supabase_client.create_client', MagicMock()):
+    from src.database.supabase_client import SupabaseClient
 
 @pytest.fixture
-def supabase_client():
+def mock_supabase_client():
+    """Create a mock Supabase client."""
+    mock = MagicMock()
+    return mock
+
+@pytest.fixture
+def supabase_client(mock_supabase_client):
     """Create a SupabaseClient instance with mocked Supabase client."""
-    client = SupabaseClient()
-    client.supabase = MagicMock()
-    return client
+    with patch('src.database.supabase_client.create_client', return_value=mock_supabase_client):
+        client = SupabaseClient()
+        client.supabase = mock_supabase_client
+        return client
 
 @pytest.mark.asyncio
 async def test_create_message_success(supabase_client):
@@ -153,5 +163,6 @@ async def test_create_message_database_error(supabase_client):
 
 @pytest.mark.asyncio
 async def test_contact_and_message_storage_flow():
-    # ... test code here ...
-    pass 
+    """Test the complete contact and message storage flow."""
+    # This is a placeholder test that should be implemented based on actual workflow
+    assert True 

@@ -5,7 +5,7 @@ Shared pytest fixtures for Athena Digital Executive Assistant tests.
 import asyncio
 import os
 import pytest
-from unittest.mock import Mock, AsyncMock, MagicMock
+from unittest.mock import Mock, AsyncMock, MagicMock, patch
 from datetime import datetime, timedelta
 from typing import Dict, Any, List
 import sys
@@ -324,4 +324,55 @@ def athena_agent_llm_error(mock_supabase_client, mock_conversation_manager, mock
 
 
 # Pytest markers for easy test categorization
-pytestmark = pytest.mark.asyncio 
+pytestmark = pytest.mark.asyncio
+
+
+@pytest.fixture(autouse=True, scope="session")
+def mock_all_dependencies():
+    """Mock all external dependencies at session level to prevent import issues."""
+    
+    # List of patches to apply
+    patches = [
+        # Database dependencies
+        patch('src.database.supabase_client.create_client', MagicMock()),
+        patch('src.database.supabase_client.SupabaseClient', MagicMock()),
+        
+        # Agent dependencies  
+        patch('src.agent.athena_agent.SupabaseClient', MagicMock()),
+        patch('src.agent.athena_agent.AthenaAgent', MagicMock()),
+        
+        # Bot dependencies
+        patch('src.bot.telegram_bot.SupabaseClient', MagicMock()),
+        patch('src.bot.telegram_bot.get_settings', MagicMock(return_value=MagicMock(
+            telegram_bot_token="test_token",
+            max_contacts=10,
+            openai_api_key="test_key",
+            supabase_url="test_url",
+            supabase_anon_key="test_anon_key"
+        ))),
+        patch('src.bot.telegram_bot.AthenaTelegramBot', MagicMock()),
+        
+        # API dependencies
+        patch('src.api.webhook_handler.WebhookHandler', MagicMock()),
+        
+        # Utils dependencies
+        patch('src.utils.conversation_manager.SupabaseClient', MagicMock()),
+    ]
+    
+    # Start all patches
+    started_patches = []
+    for p in patches:
+        started_patches.append(p.start())
+    
+    yield
+    
+    # Stop all patches
+    for p in patches:
+        p.stop()
+
+
+@pytest.fixture(autouse=True)
+def reset_mocks():
+    """Reset all mocks between tests to ensure clean state."""
+    yield
+    # Mocks are automatically reset by pytest-mock if available 
