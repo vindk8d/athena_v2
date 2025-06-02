@@ -7,6 +7,15 @@ const nextConfig = {
   images: {
     unoptimized: true,
   },
+  // Add rewrite rule to redirect root to the Next.js app
+  async rewrites() {
+    return [
+      {
+        source: '/',
+        destination: '/index',
+      },
+    ];
+  },
 };
 
 module.exports = nextConfig;
