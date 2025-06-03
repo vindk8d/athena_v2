@@ -36,14 +36,6 @@ export default function LoginPage() {
     }
   }, []);
 
-  // Handle manual navigation to dashboard
-  const navigateToDashboard = () => {
-    if (isRedirecting.current) return;
-    console.log('Login page: Manually navigating to dashboard');
-    isRedirecting.current = true;
-    router.replace('/dashboard');
-  };
-
   const handleEmailSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSigningIn(true);
@@ -60,8 +52,8 @@ export default function LoginPage() {
       if (data?.user) {
         router.replace('/dashboard');
       }
-    } catch (err: any) {
-      setError(err.message || 'Failed to sign in');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to sign in');
     } finally {
       setIsSigningIn(false);
     }
@@ -224,7 +216,6 @@ export default function LoginPage() {
               {error}
             </div>
           )}
-          
           <form onSubmit={handleEmailSignIn} className="space-y-4">
             <div className="space-y-2">
               <Input
@@ -246,11 +237,7 @@ export default function LoginPage() {
                 className="w-full"
               />
             </div>
-            <Button
-              type="submit"
-              className="w-full"
-              disabled={isSigningIn}
-            >
+            <Button type="submit" className="w-full" disabled={isSigningIn}>
               {isSigningIn ? 'Signing in...' : 'Sign in with Email'}
             </Button>
           </form>
