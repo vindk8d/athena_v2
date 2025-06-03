@@ -12,6 +12,7 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import Link from 'next/link';
 import { Subscription } from '@supabase/supabase-js';
 
@@ -21,6 +22,8 @@ export default function LoginPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isSigningIn, setIsSigningIn] = useState(false);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const redirectAttempts = useRef(0);
   const isRedirecting = useRef(false);
   const authStateChangeSubscription = useRef<Subscription | null>(null);
@@ -39,6 +42,29 @@ export default function LoginPage() {
     console.log('Login page: Manually navigating to dashboard');
     isRedirecting.current = true;
     router.replace('/dashboard');
+  };
+
+  const handleEmailSignIn = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSigningIn(true);
+    setError(null);
+
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (error) throw error;
+
+      if (data?.user) {
+        router.replace('/dashboard');
+      }
+    } catch (err: any) {
+      setError(err.message || 'Failed to sign in');
+    } finally {
+      setIsSigningIn(false);
+    }
   };
 
   useEffect(() => {
@@ -198,6 +224,46 @@ export default function LoginPage() {
               {error}
             </div>
           )}
+          
+          <form onSubmit={handleEmailSignIn} className="space-y-4">
+            <div className="space-y-2">
+              <Input
+                type="email"
+                placeholder="Email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                className="w-full"
+              />
+            </div>
+            <div className="space-y-2">
+              <Input
+                type="password"
+                placeholder="Password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                className="w-full"
+              />
+            </div>
+            <Button
+              type="submit"
+              className="w-full"
+              disabled={isSigningIn}
+            >
+              {isSigningIn ? 'Signing in...' : 'Sign in with Email'}
+            </Button>
+          </form>
+
+          <div className="relative my-6">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-gray-300"></div>
+            </div>
+            <div className="relative flex justify-center text-sm">
+              <span className="px-2 bg-white text-gray-500">Or continue with</span>
+            </div>
+          </div>
+
           <Auth
             supabaseClient={supabase}
             appearance={{ theme: ThemeSupa }}
@@ -206,6 +272,7 @@ export default function LoginPage() {
             redirectTo={redirectTo}
             onlyThirdPartyProviders
           />
+
           <div className="mt-4 flex justify-center">
             <Button
               variant="outline"
@@ -214,16 +281,6 @@ export default function LoginPage() {
               disabled={isSigningIn}
             >
               {isSigningIn ? 'Signing Out...' : 'Sign Out'}
-            </Button>
-          </div>
-          <div className="mt-4 flex justify-center">
-            <Button
-              variant="outline"
-              onClick={navigateToDashboard}
-              className="text-sm text-gray-600"
-              disabled={isSigningIn}
-            >
-              Go to Dashboard
             </Button>
           </div>
         </CardContent>
