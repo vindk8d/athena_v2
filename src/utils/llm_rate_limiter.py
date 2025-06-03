@@ -44,8 +44,8 @@ class LLMRateLimiter:
     """
     def __init__(self, config: Optional[RateLimitConfig] = None):
         self.config = config or RateLimitConfig()
-        self.light_model = ChatOpenAI(model_name="gpt-3.5-turbo", temperature=0.7)
-        self.heavy_model = ChatOpenAI(model_name="gpt-4", temperature=0.7)
+        self.light_model = ChatOpenAI(model_name="gpt-3.5-turbo", temperature=0.4)
+        self.heavy_model = ChatOpenAI(model_name="gpt-4", temperature=0.4)
         self.last_request_time: float = 0
         self.lock = asyncio.Lock()
         self.queue = asyncio.Queue()
