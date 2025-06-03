@@ -27,7 +27,9 @@ export async function middleware(req: NextRequest) {
   const supabase = createMiddlewareClient({ req, res });
 
   try {
-    const { data: { session } } = await supabase.auth.getSession();
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
     console.log('MIDDLEWARE SESSION:', session, req.cookies);
 
     // If session exists, allow access
@@ -49,7 +51,6 @@ export async function middleware(req: NextRequest) {
     loginUrl.searchParams.set('redirectedFrom', pathname);
     loginUrl.searchParams.set('redirectCount', String(redirectCount + 1));
     return NextResponse.redirect(loginUrl);
-
   } catch (error) {
     // On error, redirect to login with redirectCount
     if (redirectCount >= 3) {

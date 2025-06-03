@@ -27,7 +27,10 @@ export default function DashboardPage() {
         }
 
         if (!session.user || !session.user.id) {
-          console.error('[DashboardPage] Session present but user or user.id is missing:', session.user);
+          console.error(
+            '[DashboardPage] Session present but user or user.id is missing:',
+            session.user,
+          );
           setError('Authenticated session is missing user information.');
           setLoading(false);
           return;
@@ -44,7 +47,9 @@ export default function DashboardPage() {
 
     checkSession();
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event, session) => {
       console.log('[DashboardPage] Auth state changed:', { event, session });
       if (event === 'SIGNED_OUT') {
         router.replace('/auth/login');

@@ -1,3 +1,5 @@
+import Link from 'next/link';
+
 export default function RedirectErrorPage() {
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
@@ -19,31 +21,26 @@ export default function RedirectErrorPage() {
                 />
               </svg>
             </div>
-            <h2 className="mt-6 text-lg font-medium text-gray-900">
-              Redirect Error
-            </h2>
+            <h2 className="mt-6 text-lg font-medium text-gray-900">Redirect Error</h2>
             <p className="mt-2 text-sm text-gray-600">
               Too many redirects detected. This might indicate a configuration issue.
             </p>
             <div className="mt-6">
-              <a
+              <Link
                 href="/auth/login"
                 className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
               >
                 Try Login Again
-              </a>
+              </Link>
             </div>
             <div className="mt-4">
-              <a
-                href="/"
-                className="text-sm text-indigo-600 hover:text-indigo-500"
-              >
+              <Link href="/" className="text-sm text-indigo-600 hover:text-indigo-500">
                 Go to Home
-              </a>
+              </Link>
             </div>
           </div>
         </div>
       </div>
     </div>
   );
-} 
+}

@@ -9,7 +9,7 @@ export default function AuthCallbackPage() {
     const handleAuthCallback = async () => {
       console.log('Auth callback page: Starting auth callback handling');
       console.log('Auth callback page: URL params:', router.query);
-      
+
       try {
         // First check if we have a session
         const {
@@ -82,4 +82,4 @@ export default function AuthCallbackPage() {
       <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
     </div>
   );
-} 
+}

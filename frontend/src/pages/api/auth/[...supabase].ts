@@ -12,7 +12,7 @@ export async function GET(request: NextRequest) {
   if (code) {
     const cookieStore = cookies();
     const supabase = createRouteHandlerClient({ cookies: () => cookieStore });
-    
+
     try {
       console.log('Auth API: Attempting to exchange code for session');
       const { data, error } = await supabase.auth.exchangeCodeForSession(code);
@@ -39,7 +39,7 @@ export async function POST(request: NextRequest) {
   console.log('Auth API: Handling POST request');
   const cookieStore = cookies();
   const supabase = createRouteHandlerClient({ cookies: () => cookieStore });
-  
+
   try {
     const formData = await request.json();
     const { email, password } = formData;

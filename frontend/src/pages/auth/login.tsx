@@ -13,6 +13,7 @@ import {
 } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
+import { Subscription } from '@supabase/supabase-js';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -22,7 +23,7 @@ export default function LoginPage() {
   const [isSigningIn, setIsSigningIn] = useState(false);
   const redirectAttempts = useRef(0);
   const isRedirecting = useRef(false);
-  const authStateChangeSubscription = useRef<any>(null);
+  const authStateChangeSubscription = useRef<Subscription | null>(null);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -35,7 +36,6 @@ export default function LoginPage() {
   // Handle manual navigation to dashboard
   const navigateToDashboard = () => {
     if (isRedirecting.current) return;
-    
     console.log('Login page: Manually navigating to dashboard');
     isRedirecting.current = true;
     router.replace('/dashboard');
@@ -47,22 +47,22 @@ export default function LoginPage() {
     // Check if we're already authenticated
     const checkSession = async () => {
       if (!mounted || isRedirecting.current) return;
-      
       console.log('Login page: Checking existing session');
       try {
         const {
           data: { session },
           error,
         } = await supabase.auth.getSession();
-        
-        console.log('Login page: Session check result:', { 
-          hasSession: !!session, 
+        console.log('Login page: Session check result:', {
+          hasSession: !!session,
           error,
-          sessionData: session ? {
-            user: session.user?.email,
-            expiresAt: session.expires_at,
-            accessToken: !!session.access_token
-          } : null
+          sessionData: session
+            ? {
+                user: session.user?.email,
+                expiresAt: session.expires_at,
+                accessToken: !!session.access_token,
+              }
+            : null,
         });
 
         if (session && session.user) {
@@ -87,8 +87,6 @@ export default function LoginPage() {
           console.log('Login page: Session found, redirecting to dashboard');
           isRedirecting.current = true;
           redirectAttempts.current += 1;
-          
-          // Use replace instead of push to avoid adding to history
           router.replace('/dashboard');
           return;
         }
@@ -118,14 +116,16 @@ export default function LoginPage() {
     } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (!mounted || isRedirecting.current) return;
 
-      console.log('Login page: Auth state changed:', { 
-        event, 
+      console.log('Login page: Auth state changed:', {
+        event,
         hasSession: !!session,
-        sessionData: session ? {
-          user: session.user?.email,
-          expiresAt: session.expires_at,
-          accessToken: !!session.access_token
-        } : null
+        sessionData: session
+          ? {
+              user: session.user?.email,
+              expiresAt: session.expires_at,
+              accessToken: !!session.access_token,
+            }
+          : null,
       });
 
       if (event === 'SIGNED_IN' && session) {
@@ -201,9 +201,10 @@ export default function LoginPage() {
           <Auth
             supabaseClient={supabase}
             appearance={{ theme: ThemeSupa }}
-            providers={['google', 'github']}
+            theme="light"
+            providers={['google']}
             redirectTo={redirectTo}
-            view="sign_in"
+            onlyThirdPartyProviders
           />
           <div className="mt-4 flex justify-center">
             <Button
